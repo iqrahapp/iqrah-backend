@@ -85,3 +85,79 @@ async fn user_repository_find_or_create_is_idempotent(pool: PgPool) -> Result<()
 
     Ok(())
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn disable_pack_hides_pack_from_public_queries(pool: PgPool) -> Result<(), sqlx::Error> {
+    let repo = PgPackRepository::new(pool.clone());
+
+    repo.register_pack(
+        "quran-en",
+        "quran",
+        "en",
+        "Quran English",
+        Some("English pack"),
+    )
+    .await
+    .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    repo.add_version("quran-en", "1.0.0", "quran-en-v1.pack", 100, "sha-v1", None)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    repo.publish_pack("quran-en")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    let initially_available = repo
+        .list_available(Some("quran"), Some("en"))
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert_eq!(initially_available.len(), 1);
+    assert!(
+        repo.get_pack("quran-en")
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?
+            .is_some()
+    );
+
+    let disabled = repo
+        .disable_pack("quran-en")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert!(disabled);
+
+    let after_disable = repo
+        .list_available(Some("quran"), Some("en"))
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert!(after_disable.is_empty());
+    assert!(
+        repo.get_pack("quran-en")
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?
+            .is_none()
+    );
+
+    repo.publish_pack("quran-en")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert!(
+        repo.get_pack("quran-en")
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?
+            .is_some()
+    );
+
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn disable_pack_returns_false_for_unknown_pack(pool: PgPool) -> Result<(), sqlx::Error> {
+    let repo = PgPackRepository::new(pool);
+
+    let disabled = repo
+        .disable_pack("missing-pack")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert!(!disabled);
+
+    Ok(())
+}

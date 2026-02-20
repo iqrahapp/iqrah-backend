@@ -30,6 +30,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 jsonwebtoken = "9"
 sha2 = "0.10"
 dashmap = "6"
+semver = "1"
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 secrecy = { workspace = true }

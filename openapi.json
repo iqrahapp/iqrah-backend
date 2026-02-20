@@ -139,6 +139,93 @@
         ]
       }
     },
+    "/v1/admin/packs/{id}/disable": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Disables an existing pack (removes it from public availability).",
+        "operationId": "disable_pack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Pack ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pack disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisablePackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pack not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      }
+    },
     "/v1/admin/packs/{id}/publish": {
       "post": {
         "tags": [
@@ -370,6 +457,83 @@
         ]
       }
     },
+    "/v1/admin/users/{id}/sync_status": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin-only user sync health summary.",
+        "operationId": "admin_user_sync_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User sync status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserSyncStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      }
+    },
     "/v1/auth/google": {
       "post": {
         "tags": [
@@ -496,6 +660,109 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PackManifestResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packs/updates": {
+      "post": {
+        "tags": [
+          "packs"
+        ],
+        "summary": "Returns only installed packs that have a newer published version available.",
+        "operationId": "get_pack_updates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackUpdatesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Available updates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackUpdatesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packs/{id}/checksum": {
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "summary": "Returns checksum metadata for the currently active pack version.",
+        "operationId": "get_checksum",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Pack ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active pack checksum",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackChecksumResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pack not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -911,6 +1178,46 @@
           "winning_metadata": {}
         }
       },
+      "AdminUserSyncStatusResponse": {
+        "type": "object",
+        "description": "Admin user sync status payload.",
+        "required": [
+          "user_id",
+          "created_at",
+          "has_conflicts"
+        ],
+        "properties": {
+          "created_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "has_conflicts": {
+            "type": "boolean"
+          },
+          "last_conflict_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              }
+            ]
+          },
+          "last_seen_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              }
+            ]
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/UserId"
+          }
+        }
+      },
       "ApiError": {
         "type": "object",
         "description": "API error response format",
@@ -963,6 +1270,18 @@
         "description": "Stable device identifier.",
         "example": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
       },
+      "DisablePackResponse": {
+        "type": "object",
+        "description": "Response for disabling a pack.",
+        "required": [
+          "disabled"
+        ],
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "GoalId": {
         "type": "string",
         "description": "Stable goal identifier.",
@@ -978,6 +1297,24 @@
           "id_token": {
             "type": "string",
             "example": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9..."
+          }
+        }
+      },
+      "InstalledPackVersion": {
+        "type": "object",
+        "description": "Installed pack version reported by a client.",
+        "required": [
+          "package_id",
+          "version"
+        ],
+        "properties": {
+          "package_id": {
+            "type": "string",
+            "example": "translation.en"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
           }
         }
       },
@@ -1095,6 +1432,29 @@
           },
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "PackChecksumResponse": {
+        "type": "object",
+        "description": "Response payload for a pack checksum lookup.",
+        "required": [
+          "package_id",
+          "version",
+          "sha256"
+        ],
+        "properties": {
+          "package_id": {
+            "type": "string",
+            "example": "translation.en"
+          },
+          "sha256": {
+            "type": "string",
+            "example": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.1.0"
           }
         }
       },
@@ -1241,6 +1601,70 @@
           "tafsir"
         ],
         "example": "translation"
+      },
+      "PackUpdateDto": {
+        "type": "object",
+        "description": "Update info for one installed package.",
+        "required": [
+          "package_id",
+          "version",
+          "sha256",
+          "size_bytes",
+          "download_url"
+        ],
+        "properties": {
+          "download_url": {
+            "type": "string",
+            "example": "https://api.example.com/v1/packs/translation.en/download"
+          },
+          "package_id": {
+            "type": "string",
+            "example": "translation.en"
+          },
+          "sha256": {
+            "type": "string",
+            "example": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1024
+          },
+          "version": {
+            "type": "string",
+            "example": "1.1.0"
+          }
+        }
+      },
+      "PackUpdatesRequest": {
+        "type": "object",
+        "description": "Request payload for checking available pack updates.",
+        "required": [
+          "installed"
+        ],
+        "properties": {
+          "installed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstalledPackVersion"
+            }
+          }
+        }
+      },
+      "PackUpdatesResponse": {
+        "type": "object",
+        "description": "Response payload for available updates.",
+        "required": [
+          "updates"
+        ],
+        "properties": {
+          "updates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUpdateDto"
+            }
+          }
+        }
       },
       "PublishPackResponse": {
         "type": "object",

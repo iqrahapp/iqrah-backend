@@ -199,6 +199,19 @@ pub struct AdminConflictListResponse {
     pub conflicts: Vec<AdminConflictRecord>,
 }
 
+/// Admin user sync status payload.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AdminUserSyncStatusResponse {
+    pub user_id: UserId,
+    #[schema(example = 1706000000000_i64)]
+    pub created_at: TimestampMs,
+    #[schema(example = 1706000000000_i64)]
+    pub last_seen_at: Option<TimestampMs>,
+    pub has_conflicts: bool,
+    #[schema(example = 1706000000000_i64)]
+    pub last_conflict_at: Option<TimestampMs>,
+}
+
 /// Sync push response.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SyncPushResponse {
@@ -388,11 +401,21 @@ mod tests {
             next_cursor: None,
         };
 
+        let status = AdminUserSyncStatusResponse {
+            user_id: UserId(Uuid::new_v4()),
+            created_at: TimestampMs(1000),
+            last_seen_at: Some(TimestampMs(1001)),
+            has_conflicts: true,
+            last_conflict_at: Some(TimestampMs(1002)),
+        };
+
         let conflict_json = serde_json::to_value(&conflict).expect("conflict should serialize");
         let response_json = serde_json::to_value(&response).expect("response should serialize");
+        let status_json = serde_json::to_value(&status).expect("status should serialize");
 
         assert_eq!(conflict_json["entity_key"], "theme");
         assert_eq!(response_json["server_time"], 999);
         assert!(response_json["changes"]["settings"].is_array());
+        assert_eq!(status_json["has_conflicts"], true);
     }
 }

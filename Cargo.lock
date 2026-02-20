@@ -1155,6 +1155,7 @@ dependencies = [
  "reqwest",
  "rstest",
  "secrecy",
+ "semver",
  "serde",
  "serde_json",
  "sha2",

@@ -61,6 +61,12 @@ pub struct PublishPackResponse {
     pub published: bool,
 }
 
+/// Response for disabling a pack.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct DisablePackResponse {
+    pub disabled: bool,
+}
+
 /// Registers a new pack.
 #[utoipa::path(
     post,
@@ -265,6 +271,50 @@ pub async fn publish_pack(
     Ok(Json(PublishPackResponse { published: true }))
 }
 
+/// Disables an existing pack (removes it from public availability).
+#[utoipa::path(
+    post,
+    path = "/v1/admin/packs/{id}/disable",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "Pack ID")
+    ),
+    responses(
+        (status = 200, description = "Pack disabled", body = DisablePackResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 404, description = "Pack not found", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
+pub async fn disable_pack(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminApiKey,
+    Path(package_id): Path<String>,
+) -> Result<Json<DisablePackResponse>, DomainError> {
+    if package_id.trim().is_empty() {
+        return Err(DomainError::Validation(
+            "Pack id cannot be empty".to_string(),
+        ));
+    }
+
+    let disabled = state
+        .pack_repo
+        .disable_pack(package_id.clone())
+        .await
+        .map_err(|e| DomainError::Database(e.to_string()))?;
+
+    if !disabled {
+        return Err(DomainError::NotFound(format!(
+            "Pack '{package_id}' was not found"
+        )));
+    }
+
+    Ok(Json(DisablePackResponse { disabled }))
+}
+
 /// Lists all packs and their latest versions for admin tooling.
 #[utoipa::path(
     get,
@@ -357,6 +407,7 @@ mod tests {
                 min_app_version: Option<String>,
             ) -> Result<(), StorageError>;
             async fn publish_pack(&self, package_id: String) -> Result<(), StorageError>;
+            async fn disable_pack(&self, package_id: String) -> Result<bool, StorageError>;
         }
     }
 
@@ -404,6 +455,7 @@ mod tests {
         repo.expect_get_active_version_id().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -445,6 +497,7 @@ mod tests {
         repo.expect_get_active_version_id().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -483,6 +536,7 @@ mod tests {
         repo.expect_list_all_packs().times(0);
         repo.expect_get_active_version_id().times(0);
         repo.expect_add_version().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -507,6 +561,151 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disable_pack_happy_path_returns_disabled_true() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_disable_pack()
+            .times(1)
+            .with(mockall::predicate::eq("pack-1".to_string()))
+            .returning(|_| Ok(true));
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_add_version().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmp").path(),
+            )),
+            base_config(),
+        );
+
+        let Json(response) = disable_pack(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path("pack-1".to_string()),
+        )
+        .await
+        .expect("disable should succeed");
+
+        assert!(response.disabled);
+    }
+
+    #[tokio::test]
+    async fn disable_pack_returns_400_when_pack_id_is_empty() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_disable_pack().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_add_version().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmp").path(),
+            )),
+            base_config(),
+        );
+
+        let err = disable_pack(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path("  ".to_string()),
+        )
+        .await
+        .expect_err("blank id should fail");
+
+        assert_eq!(err.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn disable_pack_returns_404_when_pack_missing() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_disable_pack().times(1).returning(|_| Ok(false));
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_add_version().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmp").path(),
+            )),
+            base_config(),
+        );
+
+        let err = disable_pack(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path("missing".to_string()),
+        )
+        .await
+        .expect_err("missing pack should fail");
+
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn disable_pack_returns_500_on_repository_error() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_disable_pack()
+            .times(1)
+            .returning(|_| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_add_version().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmp").path(),
+            )),
+            base_config(),
+        );
+
+        let err = disable_pack(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path("pack-1".to_string()),
+        )
+        .await
+        .expect_err("disable should fail");
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
     async fn list_all_packs_happy_path_maps_entries() {
         let mut repo = MockPackRepo::new();
         repo.expect_list_all_packs().times(1).returning(|| {
@@ -528,6 +727,7 @@ mod tests {
         repo.expect_list_active_pack_versions().times(0);
         repo.expect_get_active_version_id().times(0);
         repo.expect_add_version().times(0);
+        repo.expect_disable_pack().times(0);
 
         let mut config = base_config();
         config.base_url = "https://api.example.com".to_string();
@@ -570,6 +770,7 @@ mod tests {
         repo.expect_get_pack().times(0);
         repo.expect_list_active_pack_versions().times(0);
         repo.expect_list_all_packs().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -630,6 +831,7 @@ mod tests {
         repo.expect_get_pack().times(0);
         repo.expect_list_active_pack_versions().times(0);
         repo.expect_list_all_packs().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -693,6 +895,34 @@ mod tests {
                         }))
                         .expect("payload should serialize"),
                     ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn disable_pack_route_returns_401_when_admin_key_missing() {
+        let state = build_state(
+            Arc::new(MockPackRepo::new()),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmp").path(),
+            )),
+            base_config(),
+        );
+        let app = build_router(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/packs/pack-1/disable")
+                    .body(Body::empty())
                     .expect("request should build"),
             )
             .await

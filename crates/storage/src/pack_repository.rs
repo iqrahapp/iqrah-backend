@@ -45,7 +45,7 @@ pub trait PackRepository: Send + Sync {
         language: Option<String>,
     ) -> Result<Vec<PackInfo>, StorageError>;
 
-    /// Returns active version details for a given package id.
+    /// Returns active version details for a published package id.
     async fn get_pack(&self, package_id: String) -> Result<Option<PackInfo>, StorageError>;
 
     /// Lists active versions for all published packs.
@@ -80,6 +80,11 @@ pub trait PackRepository: Send + Sync {
 
     /// Publishes a pack.
     async fn publish_pack(&self, package_id: String) -> Result<(), StorageError>;
+
+    /// Disables a pack so it is no longer listed or downloadable.
+    ///
+    /// Returns `true` when a pack row was updated, `false` when no pack matched the id.
+    async fn disable_pack(&self, package_id: String) -> Result<bool, StorageError>;
 }
 
 /// PostgreSQL implementation for [`PackRepository`].
@@ -167,6 +172,11 @@ impl PgPackRepository {
     pub async fn publish_pack(&self, package_id: &str) -> Result<(), StorageError> {
         <Self as PackRepository>::publish_pack(self, package_id.to_string()).await
     }
+
+    /// Backward-compatible helper for call sites using borrowed ids.
+    pub async fn disable_pack(&self, package_id: &str) -> Result<bool, StorageError> {
+        <Self as PackRepository>::disable_pack(self, package_id.to_string()).await
+    }
 }
 
 #[async_trait]
@@ -237,6 +247,7 @@ impl PackRepository for PgPackRepository {
             FROM packs p
             JOIN pack_versions pv ON p.package_id = pv.package_id AND pv.is_active = true
             WHERE p.package_id = $1
+              AND p.status = 'published'
             "#,
             package_id
         )
@@ -433,6 +444,18 @@ impl PackRepository for PgPackRepository {
 
         Ok(())
     }
+
+    async fn disable_pack(&self, package_id: String) -> Result<bool, StorageError> {
+        let result = sqlx::query!(
+            "UPDATE packs SET status = 'deprecated' WHERE package_id = $1",
+            package_id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(StorageError::Query)?;
+
+        Ok(result.rows_affected() > 0)
+    }
 }
 
 #[cfg(test)]
@@ -483,6 +506,10 @@ mod tests {
         ));
         assert!(matches!(
             repo.publish_pack("pack").await,
+            Err(StorageError::Query(_))
+        ));
+        assert!(matches!(
+            repo.disable_pack("pack").await,
             Err(StorageError::Query(_))
         ));
     }

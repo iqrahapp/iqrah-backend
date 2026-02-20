@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                pv.id AS \"version_id!\",\n                p.package_id,\n                p.pack_type,\n                pv.version,\n                p.language,\n                COALESCE(p.name, p.package_id) AS \"name!\",\n                p.description,\n                pv.size_bytes,\n                pv.sha256,\n                pv.file_path\n            FROM packs p\n            JOIN pack_versions pv ON p.package_id = pv.package_id AND pv.is_active = true\n            WHERE p.package_id = $1\n            ",
+  "query": "\n            SELECT\n                pv.id AS \"version_id!\",\n                p.package_id,\n                p.pack_type,\n                pv.version,\n                p.language,\n                COALESCE(p.name, p.package_id) AS \"name!\",\n                p.description,\n                pv.size_bytes,\n                pv.sha256,\n                pv.file_path\n            FROM packs p\n            JOIN pack_versions pv ON p.package_id = pv.package_id AND pv.is_active = true\n            WHERE p.package_id = $1\n              AND p.status = 'published'\n            ",
   "describe": {
     "columns": [
       {
@@ -72,5 +72,5 @@
       false
     ]
   },
-  "hash": "9f526eb98a2a2d3739b58c913b34de8d0ea6d3af0d317e0878969313ca324243"
+  "hash": "a8e0f00f03eece2faac132b3daa132b8641290484e52e24b7171d3e3b8ca7d1e"
 }

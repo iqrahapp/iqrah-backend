@@ -12,8 +12,9 @@ use validator::Validate;
 use crate::AppState;
 use crate::middleware::auth::{AdminApiKey, AuthUser};
 use iqrah_backend_domain::{
-    AdminConflictListResponse, AdminConflictRecord, ApiError, DomainError, SyncPullRequest,
-    SyncPullResponse, SyncPushRequest, SyncPushResponse, TimestampMs, UserId,
+    AdminConflictListResponse, AdminConflictRecord, AdminUserSyncStatusResponse, ApiError,
+    DomainError, SyncPullRequest, SyncPullResponse, SyncPushRequest, SyncPushResponse, TimestampMs,
+    UserId,
 };
 
 /// Pushes local device changes to the server.
@@ -172,6 +173,55 @@ pub async fn admin_recent_conflicts(
     }))
 }
 
+/// Admin-only user sync health summary.
+#[utoipa::path(
+    get,
+    path = "/v1/admin/users/{id}/sync_status",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "User sync status", body = AdminUserSyncStatusResponse),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 404, description = "User not found", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
+pub async fn admin_user_sync_status(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminApiKey,
+    Path(user_id): Path<uuid::Uuid>,
+) -> Result<Json<AdminUserSyncStatusResponse>, DomainError> {
+    let user_id = UserId(user_id);
+    let user = state
+        .auth_repo
+        .get_by_id(user_id)
+        .await
+        .map_err(|e| DomainError::Database(e.to_string()))?
+        .ok_or_else(|| DomainError::NotFound(format!("User {user_id} not found")))?;
+
+    let recent_conflicts = state
+        .sync_repo
+        .list_recent_conflicts(user_id, 1)
+        .await
+        .map_err(|e| DomainError::Database(e.to_string()))?;
+
+    Ok(Json(AdminUserSyncStatusResponse {
+        user_id,
+        created_at: TimestampMs(user.created_at.timestamp_millis()),
+        last_seen_at: user
+            .last_seen_at
+            .map(|value| TimestampMs(value.timestamp_millis())),
+        has_conflicts: !recent_conflicts.is_empty(),
+        last_conflict_at: recent_conflicts
+            .first()
+            .map(|row| TimestampMs(row.resolved_at.timestamp_millis())),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -181,7 +231,9 @@ mod tests {
     use axum::http::{Request, StatusCode, header};
     use chrono::Utc;
     use iqrah_backend_domain::{DeviceId, SyncChanges, SyncPullCursor, TimestampMs, UserId};
-    use iqrah_backend_storage::{ConflictLogEntry, StorageError, SyncRepository};
+    use iqrah_backend_storage::{
+        AuthRepository, ConflictLogEntry, StorageError, SyncRepository, UserRecord,
+    };
     use tower::ServiceExt;
     use uuid::Uuid;
 
@@ -226,6 +278,16 @@ mod tests {
                 limit: usize,
                 cursor: Option<SyncPullCursor>,
             ) -> Result<(SyncChanges, bool, Option<SyncPullCursor>), StorageError>;
+        }
+    }
+
+    mockall::mock! {
+        pub AuthRepo {}
+
+        #[async_trait]
+        impl AuthRepository for AuthRepo {
+            async fn find_or_create(&self, oauth_sub: &str) -> Result<UserRecord, StorageError>;
+            async fn get_by_id(&self, id: UserId) -> Result<Option<UserRecord>, StorageError>;
         }
     }
 
@@ -569,6 +631,191 @@ mod tests {
         .expect_err("storage error should fail");
 
         assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn admin_user_sync_status_happy_path_returns_user_sync_summary() {
+        let user_id = UserId(Uuid::new_v4());
+        let created_at = Utc::now();
+        let last_seen_at = Some(Utc::now());
+
+        let mut auth_repo = MockAuthRepo::new();
+        auth_repo.expect_get_by_id().times(1).returning(move |_| {
+            Ok(Some(UserRecord {
+                id: user_id,
+                oauth_sub: "oauth-sub".to_string(),
+                created_at,
+                last_seen_at,
+            }))
+        });
+        auth_repo.expect_find_or_create().times(0);
+
+        let mut sync_repo = MockSyncRepo::new();
+        sync_repo
+            .expect_list_recent_conflicts()
+            .times(1)
+            .with(mockall::predicate::eq(user_id), mockall::predicate::eq(1))
+            .returning(move |_, _| {
+                Ok(vec![ConflictLogEntry {
+                    id: 1,
+                    user_id,
+                    entity_type: "setting".to_string(),
+                    entity_key: "theme".to_string(),
+                    incoming_metadata: serde_json::json!({"value":"dark"}),
+                    winning_metadata: serde_json::json!({"value":"light"}),
+                    resolved_at: Utc::now(),
+                }])
+            });
+        sync_repo.expect_touch_device().times(0);
+        sync_repo.expect_apply_changes().times(0);
+        sync_repo.expect_get_changes_since().times(0);
+
+        let state = build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(auth_repo),
+            Arc::new(sync_repo),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(NoopPackAssetStore),
+            base_config(),
+        );
+
+        let Json(response) = admin_user_sync_status(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path(user_id.0),
+        )
+        .await
+        .expect("sync status should load");
+
+        assert_eq!(response.user_id, user_id);
+        assert!(response.last_seen_at.is_some());
+        assert!(response.has_conflicts);
+        assert!(response.last_conflict_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn admin_user_sync_status_returns_404_when_user_missing() {
+        let user_id = UserId(Uuid::new_v4());
+
+        let mut auth_repo = MockAuthRepo::new();
+        auth_repo
+            .expect_get_by_id()
+            .times(1)
+            .returning(|_| Ok(None));
+        auth_repo.expect_find_or_create().times(0);
+
+        let mut sync_repo = MockSyncRepo::new();
+        sync_repo.expect_list_recent_conflicts().times(0);
+        sync_repo.expect_touch_device().times(0);
+        sync_repo.expect_apply_changes().times(0);
+        sync_repo.expect_get_changes_since().times(0);
+
+        let state = build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(auth_repo),
+            Arc::new(sync_repo),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(NoopPackAssetStore),
+            base_config(),
+        );
+
+        let err = admin_user_sync_status(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path(user_id.0),
+        )
+        .await
+        .expect_err("missing user should fail");
+
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn admin_user_sync_status_returns_500_when_downstream_fails() {
+        let user_id = UserId(Uuid::new_v4());
+
+        let mut auth_repo = MockAuthRepo::new();
+        auth_repo
+            .expect_get_by_id()
+            .times(1)
+            .returning(|_| Err(StorageError::Unexpected("db down".to_string())));
+        auth_repo.expect_find_or_create().times(0);
+
+        let mut sync_repo = MockSyncRepo::new();
+        sync_repo.expect_list_recent_conflicts().times(0);
+        sync_repo.expect_touch_device().times(0);
+        sync_repo.expect_apply_changes().times(0);
+        sync_repo.expect_get_changes_since().times(0);
+
+        let state = build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(auth_repo),
+            Arc::new(sync_repo),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(NoopPackAssetStore),
+            base_config(),
+        );
+
+        let err = admin_user_sync_status(
+            axum::extract::State(state),
+            crate::middleware::auth::AdminApiKey,
+            axum::extract::Path(user_id.0),
+        )
+        .await
+        .expect_err("downstream error should fail");
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn admin_user_sync_status_route_returns_400_for_invalid_user_id() {
+        let app = build_router(build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(NoopAuthRepository),
+            Arc::new(MockSyncRepo::new()),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(NoopPackAssetStore),
+            base_config(),
+        ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/admin/users/not-a-uuid/sync_status")
+                    .header("x-admin-key", "admin-secret")
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn admin_user_sync_status_route_returns_401_when_admin_key_missing() {
+        let app = build_router(build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(NoopAuthRepository),
+            Arc::new(MockSyncRepo::new()),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(NoopPackAssetStore),
+            base_config(),
+        ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/admin/users/{}/sync_status", Uuid::new_v4()))
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

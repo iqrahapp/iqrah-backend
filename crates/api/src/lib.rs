@@ -238,6 +238,10 @@ pub(crate) mod test_support {
         async fn publish_pack(&self, _package_id: String) -> Result<(), StorageError> {
             Ok(())
         }
+
+        async fn disable_pack(&self, _package_id: String) -> Result<bool, StorageError> {
+            Ok(false)
+        }
     }
 
     #[derive(Clone, Default)]
@@ -457,6 +461,10 @@ mod tests {
 
         async fn publish_pack(&self, _package_id: String) -> Result<(), StorageError> {
             Ok(())
+        }
+
+        async fn disable_pack(&self, _package_id: String) -> Result<bool, StorageError> {
+            Ok(false)
         }
     }
 

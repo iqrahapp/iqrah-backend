@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE packs SET status = 'deprecated' WHERE package_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7ca38350aea80ab4410f5a0d2ed3fa7ab22340ba1e03da4a9d67cd32429ec4a7"
+}

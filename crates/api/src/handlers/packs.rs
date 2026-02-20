@@ -1,5 +1,7 @@
 //! Pack API handlers.
 
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
@@ -13,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
+use validator::Validate;
 
 use iqrah_backend_domain::{
     ApiError, DomainError, PackId, PackManifestEntry, PackManifestResponse,
@@ -84,6 +87,56 @@ pub struct ListPacksResponse {
     pub packs: Vec<PackDto>,
 }
 
+/// Installed pack version reported by a client.
+#[derive(Debug, Deserialize, Validate, utoipa::ToSchema)]
+pub struct InstalledPackVersion {
+    #[validate(length(min = 1, max = 255))]
+    #[schema(example = "translation.en")]
+    pub package_id: String,
+    #[validate(length(min = 1, max = 128))]
+    #[schema(example = "1.0.0")]
+    pub version: String,
+}
+
+/// Request payload for checking available pack updates.
+#[derive(Debug, Deserialize, Validate, utoipa::ToSchema)]
+pub struct PackUpdatesRequest {
+    #[validate(nested)]
+    pub installed: Vec<InstalledPackVersion>,
+}
+
+/// Update info for one installed package.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct PackUpdateDto {
+    #[schema(example = "translation.en")]
+    pub package_id: String,
+    #[schema(example = "1.1.0")]
+    pub version: String,
+    #[schema(example = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")]
+    pub sha256: String,
+    #[schema(example = 1_024_i64)]
+    pub size_bytes: i64,
+    #[schema(example = "https://api.example.com/v1/packs/translation.en/download")]
+    pub download_url: String,
+}
+
+/// Response payload for available updates.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct PackUpdatesResponse {
+    pub updates: Vec<PackUpdateDto>,
+}
+
+/// Response payload for a pack checksum lookup.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct PackChecksumResponse {
+    #[schema(example = "translation.en")]
+    pub package_id: String,
+    #[schema(example = "1.1.0")]
+    pub version: String,
+    #[schema(example = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")]
+    pub sha256: String,
+}
+
 /// Lists available published packs.
 #[utoipa::path(
     get,
@@ -115,6 +168,59 @@ pub async fn list_packs(
         .collect();
 
     Ok(Json(ListPacksResponse { packs: dtos }))
+}
+
+/// Returns only installed packs that have a newer published version available.
+#[utoipa::path(
+    post,
+    path = "/v1/packs/updates",
+    tag = "packs",
+    request_body = PackUpdatesRequest,
+    responses(
+        (status = 200, description = "Available updates", body = PackUpdatesResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
+pub async fn get_pack_updates(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<PackUpdatesRequest>,
+) -> Result<Json<PackUpdatesResponse>, DomainError> {
+    req.validate()
+        .map_err(iqrah_backend_domain::DomainError::from_validation_errors)?;
+
+    let installed_versions: HashMap<String, String> = req
+        .installed
+        .into_iter()
+        .map(|installed| (installed.package_id, installed.version))
+        .collect();
+
+    let packs = state
+        .pack_repo
+        .list_available(None, None)
+        .await
+        .map_err(|e| DomainError::Database(e.to_string()))?;
+
+    let base_url = &state.config.base_url;
+    let updates = packs
+        .into_iter()
+        .filter_map(|pack| {
+            let installed = installed_versions.get(&pack.package_id)?;
+            if is_newer_version(installed, &pack.version) {
+                Some(PackUpdateDto {
+                    package_id: pack.package_id.clone(),
+                    version: pack.version,
+                    sha256: pack.sha256,
+                    size_bytes: pack.size_bytes,
+                    download_url: format!("{}/v1/packs/{}/download", base_url, pack.package_id),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(Json(PackUpdatesResponse { updates }))
 }
 
 /// Gets manifest for all published active packs.
@@ -446,6 +552,22 @@ fn parse_range_header(
     Ok(Some(range))
 }
 
+fn is_newer_version(installed: &str, available: &str) -> bool {
+    if installed == available {
+        return false;
+    }
+
+    match (parse_semver(installed), parse_semver(available)) {
+        (Some(installed_version), Some(available_version)) => available_version > installed_version,
+        _ => available.cmp(installed) == Ordering::Greater,
+    }
+}
+
+fn parse_semver(version: &str) -> Option<semver::Version> {
+    let normalized = version.trim().strip_prefix('v').unwrap_or(version.trim());
+    semver::Version::parse(normalized).ok()
+}
+
 /// Gets pack metadata without downloading the file.
 #[utoipa::path(
     get,
@@ -473,6 +595,38 @@ pub async fn get_manifest(
 
     let base_url = &state.config.base_url;
     Ok(Json(PackDto::from_info(pack, base_url)))
+}
+
+/// Returns checksum metadata for the currently active pack version.
+#[utoipa::path(
+    get,
+    path = "/v1/packs/{id}/checksum",
+    tag = "packs",
+    params(
+        ("id" = String, Path, description = "Pack ID")
+    ),
+    responses(
+        (status = 200, description = "Active pack checksum", body = PackChecksumResponse),
+        (status = 404, description = "Pack not found", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
+pub async fn get_checksum(
+    State(state): State<Arc<AppState>>,
+    Path(package_id): Path<String>,
+) -> Result<Json<PackChecksumResponse>, DomainError> {
+    let pack = state
+        .pack_repo
+        .get_pack(package_id.clone())
+        .await
+        .map_err(|e| DomainError::Database(e.to_string()))?
+        .ok_or_else(|| DomainError::NotFound(format!("Pack '{package_id}' not found")))?;
+
+    Ok(Json(PackChecksumResponse {
+        package_id: pack.package_id,
+        version: pack.version,
+        sha256: pack.sha256,
+    }))
 }
 
 #[cfg(test)]
@@ -537,6 +691,22 @@ mod tests {
     #[test]
     fn parse_range_without_header_is_none() {
         assert_eq!(parse_range_header(&HeaderMap::new(), 100), Ok(None));
+    }
+
+    #[test]
+    fn is_newer_version_compares_numeric_versions() {
+        assert!(is_newer_version("1.0.0", "1.0.1"));
+        assert!(is_newer_version("1.0", "1.0.0"));
+        assert!(is_newer_version("v1.2.2", "1.2.3"));
+        assert!(is_newer_version("1.2.3-alpha.1", "1.2.3"));
+        assert!(!is_newer_version("2.0.0", "1.9.9"));
+        assert!(!is_newer_version("1.2.3", "1.2.3-alpha.1"));
+    }
+
+    #[test]
+    fn is_newer_version_falls_back_for_non_numeric_versions() {
+        assert!(is_newer_version("v1-alpha", "v2-alpha"));
+        assert!(!is_newer_version("same", "same"));
     }
 
     async fn write_temp_pack(content: &[u8]) -> (tempfile::TempDir, FsPackAssetStore, String) {
@@ -739,6 +909,7 @@ mod tests {
                 min_app_version: Option<String>,
             ) -> Result<(), StorageError>;
             async fn publish_pack(&self, package_id: String) -> Result<(), StorageError>;
+            async fn disable_pack(&self, package_id: String) -> Result<bool, StorageError>;
         }
     }
 
@@ -772,6 +943,7 @@ mod tests {
         repo.expect_register_pack().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let mut config = base_config();
         config.base_url = "https://api.example.com".to_string();
@@ -814,6 +986,7 @@ mod tests {
         repo.expect_register_pack().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -833,6 +1006,154 @@ mod tests {
         )
         .await
         .expect_err("storage error should fail");
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn get_pack_updates_happy_path_returns_only_outdated_installed_packs() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_available().times(1).returning(|_, _| {
+            Ok(vec![
+                PackInfo {
+                    version_id: 1,
+                    package_id: "pack-en".to_string(),
+                    pack_type: "translation".to_string(),
+                    version: "1.2.0".to_string(),
+                    language: "en".to_string(),
+                    name: "English".to_string(),
+                    description: None,
+                    size_bytes: 120,
+                    sha256: "abc".repeat(21) + "a",
+                    file_path: "pack-en/1.2.0/pack.bin".to_string(),
+                },
+                PackInfo {
+                    version_id: 2,
+                    package_id: "pack-ar".to_string(),
+                    pack_type: "translation".to_string(),
+                    version: "1.0.0".to_string(),
+                    language: "ar".to_string(),
+                    name: "Arabic".to_string(),
+                    description: None,
+                    size_bytes: 130,
+                    sha256: "bcd".repeat(21) + "b",
+                    file_path: "pack-ar/1.0.0/pack.bin".to_string(),
+                },
+            ])
+        });
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let mut config = base_config();
+        config.base_url = "https://api.example.com".to_string();
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            config,
+        );
+
+        let Json(response) = get_pack_updates(
+            axum::extract::State(state),
+            Json(PackUpdatesRequest {
+                installed: vec![
+                    InstalledPackVersion {
+                        package_id: "pack-en".to_string(),
+                        version: "1.0.0".to_string(),
+                    },
+                    InstalledPackVersion {
+                        package_id: "pack-ar".to_string(),
+                        version: "1.0.0".to_string(),
+                    },
+                ],
+            }),
+        )
+        .await
+        .expect("updates should succeed");
+
+        assert_eq!(response.updates.len(), 1);
+        assert_eq!(response.updates[0].package_id, "pack-en");
+        assert_eq!(
+            response.updates[0].download_url,
+            "https://api.example.com/v1/packs/pack-en/download"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_pack_updates_returns_400_for_invalid_payload() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_available().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let err = get_pack_updates(
+            axum::extract::State(state),
+            Json(PackUpdatesRequest {
+                installed: vec![InstalledPackVersion {
+                    package_id: "".to_string(),
+                    version: "1.0.0".to_string(),
+                }],
+            }),
+        )
+        .await
+        .expect_err("invalid payload should fail");
+
+        assert_eq!(err.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn get_pack_updates_returns_500_on_repository_error() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_available()
+            .times(1)
+            .returning(|_, _| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let err = get_pack_updates(
+            axum::extract::State(state),
+            Json(PackUpdatesRequest { installed: vec![] }),
+        )
+        .await
+        .expect_err("repository error should fail");
 
         assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -861,6 +1182,7 @@ mod tests {
         repo.expect_register_pack().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -890,6 +1212,7 @@ mod tests {
         repo.expect_register_pack().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -911,6 +1234,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_checksum_happy_path_returns_active_pack_checksum() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_pack().times(1).returning(|_| {
+            Ok(Some(PackInfo {
+                version_id: 7,
+                package_id: "pack-1".to_string(),
+                pack_type: "translation".to_string(),
+                version: "1.0.0".to_string(),
+                language: "en".to_string(),
+                name: "English".to_string(),
+                description: None,
+                size_bytes: 10,
+                sha256: "abc".repeat(21) + "a",
+                file_path: "pack-1/1.0.0/pack.bin".to_string(),
+            }))
+        });
+        repo.expect_list_available().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let Json(response) = get_checksum(
+            axum::extract::State(state),
+            axum::extract::Path("pack-1".to_string()),
+        )
+        .await
+        .expect("checksum should succeed");
+
+        assert_eq!(response.package_id, "pack-1");
+        assert_eq!(response.version, "1.0.0");
+    }
+
+    #[tokio::test]
+    async fn get_checksum_returns_404_when_pack_missing() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_pack().times(1).returning(|_| Ok(None));
+        repo.expect_list_available().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let err = get_checksum(
+            axum::extract::State(state),
+            axum::extract::Path("missing".to_string()),
+        )
+        .await
+        .expect_err("missing pack should fail");
+
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_checksum_returns_500_on_repository_error() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_pack()
+            .times(1)
+            .returning(|_| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_list_available().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let err = get_checksum(
+            axum::extract::State(state),
+            axum::extract::Path("pack-1".to_string()),
+        )
+        .await
+        .expect_err("storage error should fail");
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
     async fn download_pack_returns_404_when_repository_has_no_pack() {
         let mut repo = MockPackRepo::new();
         repo.expect_get_pack().times(1).returning(|_| Ok(None));
@@ -921,6 +1356,7 @@ mod tests {
         repo.expect_register_pack().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let state = build_state(
             Arc::new(repo),
@@ -969,6 +1405,7 @@ mod tests {
         repo.expect_register_pack().times(0);
         repo.expect_add_version().times(0);
         repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
 
         let mut store = MockPackAssetStore::new();
         store.expect_exists().times(1).returning(|_| Ok(false));
