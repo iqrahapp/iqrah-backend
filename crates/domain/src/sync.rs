@@ -201,3 +201,180 @@ pub struct SyncPullResponse {
     pub has_more: bool, // true if there are more records available
     pub next_cursor: Option<SyncPullCursor>,
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use uuid::Uuid;
+    use validator::Validate;
+
+    use super::*;
+
+    fn valid_sync_changes() -> SyncChanges {
+        SyncChanges {
+            settings: vec![SettingChange {
+                key: "theme".to_string(),
+                value: json!("dark"),
+                client_updated_at: TimestampMs(1),
+            }],
+            memory_states: vec![MemoryStateChange {
+                node_id: 11,
+                energy: 0.4,
+                fsrs_stability: Some(2.0),
+                fsrs_difficulty: Some(3.0),
+                last_reviewed_at: Some(TimestampMs(2)),
+                next_review_at: Some(TimestampMs(3)),
+                client_updated_at: TimestampMs(4),
+            }],
+            sessions: vec![SessionChange {
+                id: Uuid::new_v4(),
+                goal_id: Some(GoalId("goal-1".to_string())),
+                started_at: TimestampMs(5),
+                completed_at: Some(TimestampMs(6)),
+                items_completed: 2,
+                client_updated_at: TimestampMs(7),
+            }],
+            session_items: vec![SessionItemChange {
+                id: Uuid::new_v4(),
+                session_id: Uuid::new_v4(),
+                node_id: 12,
+                exercise_type: "review".to_string(),
+                grade: Some(5),
+                duration_ms: Some(1500),
+                client_updated_at: TimestampMs(8),
+            }],
+        }
+    }
+
+    #[test]
+    fn sync_push_request_validates_successfully_for_valid_payload() {
+        let request = SyncPushRequest {
+            device_id: DeviceId(Uuid::new_v4()),
+            changes: valid_sync_changes(),
+            device_os: Some("Android 14".to_string()),
+            device_model: Some("Pixel 8 Pro".to_string()),
+            app_version: Some("1.2.3".to_string()),
+        };
+
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn sync_push_request_rejects_invalid_nested_changes() {
+        let request = SyncPushRequest {
+            device_id: DeviceId(Uuid::new_v4()),
+            changes: SyncChanges {
+                settings: vec![SettingChange {
+                    key: "".to_string(),
+                    value: json!(null),
+                    client_updated_at: TimestampMs(1),
+                }],
+                ..SyncChanges::default()
+            },
+            device_os: None,
+            device_model: None,
+            app_version: None,
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn sync_pull_request_defaults_limit_to_1000() {
+        let request: SyncPullRequest = serde_json::from_value(json!({
+            "device_id": Uuid::new_v4(),
+            "since": 0
+        }))
+        .expect("request should deserialize");
+
+        assert_eq!(request.limit, Some(1000));
+    }
+
+    #[test]
+    fn sync_pull_request_rejects_limit_below_range() {
+        let request = SyncPullRequest {
+            device_id: DeviceId(Uuid::new_v4()),
+            since: TimestampMs(0),
+            limit: Some(0),
+            cursor: None,
+            device_os: None,
+            device_model: None,
+            app_version: None,
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn sync_pull_cursor_roundtrips_through_serde() {
+        let cursor = SyncPullCursor {
+            settings: Some(SyncCursorSetting {
+                updated_at: TimestampMs(100),
+                key: "setting-key".to_string(),
+            }),
+            memory_states: Some(SyncCursorMemoryState {
+                updated_at: TimestampMs(101),
+                node_id: 10,
+            }),
+            sessions: Some(SyncCursorSession {
+                updated_at: TimestampMs(102),
+                id: Uuid::new_v4(),
+            }),
+            session_items: Some(SyncCursorSessionItem {
+                updated_at: TimestampMs(103),
+                id: Uuid::new_v4(),
+            }),
+        };
+
+        let json = serde_json::to_string(&cursor).expect("cursor should serialize");
+        let restored: SyncPullCursor =
+            serde_json::from_str(&json).expect("cursor should deserialize");
+
+        assert_eq!(
+            restored.settings.expect("settings cursor should exist").key,
+            "setting-key"
+        );
+    }
+
+    #[test]
+    fn session_item_change_rejects_out_of_range_grade() {
+        let item = SessionItemChange {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            node_id: 5,
+            exercise_type: "listen".to_string(),
+            grade: Some(6),
+            duration_ms: Some(1000),
+            client_updated_at: TimestampMs(99),
+        };
+
+        assert!(item.validate().is_err());
+    }
+
+    #[test]
+    fn admin_conflict_and_sync_responses_serialize_expected_shape() {
+        let conflict = AdminConflictRecord {
+            id: 1,
+            user_id: UserId(Uuid::new_v4()),
+            entity_type: "setting".to_string(),
+            entity_key: "theme".to_string(),
+            incoming_metadata: json!({"value": "dark"}),
+            winning_metadata: json!({"value": "light"}),
+            resolved_at: TimestampMs(123),
+        };
+
+        let response = SyncPullResponse {
+            server_time: TimestampMs(999),
+            changes: valid_sync_changes(),
+            has_more: false,
+            next_cursor: None,
+        };
+
+        let conflict_json = serde_json::to_value(&conflict).expect("conflict should serialize");
+        let response_json = serde_json::to_value(&response).expect("response should serialize");
+
+        assert_eq!(conflict_json["entity_key"], "theme");
+        assert_eq!(response_json["server_time"], 999);
+        assert!(response_json["changes"]["settings"].is_array());
+    }
+}

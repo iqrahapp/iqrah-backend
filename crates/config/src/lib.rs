@@ -80,11 +80,141 @@ fn env_var_or(name: &str, default: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
     use super::*;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_env(vars: &[(&str, Option<&str>)], test: impl FnOnce()) {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        let keys = [
+            "DATABASE_URL",
+            "JWT_SECRET",
+            "PACK_STORAGE_PATH",
+            "GOOGLE_CLIENT_ID",
+            "BIND_ADDRESS",
+            "BASE_URL",
+            "ADMIN_API_KEY",
+        ];
+
+        let original: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|key| ((*key).to_string(), std::env::var(key).ok()))
+            .collect();
+
+        for key in keys {
+            // SAFETY: tests are serialized via env_lock.
+            unsafe { std::env::remove_var(key) };
+        }
+        for (key, value) in vars {
+            if let Some(value) = value {
+                // SAFETY: tests are serialized via env_lock.
+                unsafe { std::env::set_var(key, value) };
+            }
+        }
+
+        test();
+
+        for (key, value) in original {
+            if let Some(value) = value {
+                // SAFETY: tests are serialized via env_lock.
+                unsafe { std::env::set_var(key, value) };
+            } else {
+                // SAFETY: tests are serialized via env_lock.
+                unsafe { std::env::remove_var(key) };
+            }
+        }
+    }
 
     #[test]
     fn test_env_var_or_uses_default() {
         let val = env_var_or("NON_EXISTENT_VAR_12345", "default_value");
         assert_eq!(val, "default_value");
+    }
+
+    #[test]
+    fn from_env_loads_valid_config() {
+        with_env(
+            &[
+                ("DATABASE_URL", Some("postgres://localhost:5432/iqrah")),
+                ("JWT_SECRET", Some("secret")),
+                ("PACK_STORAGE_PATH", Some("/tmp/packs")),
+                ("GOOGLE_CLIENT_ID", Some("google-client-id")),
+                ("BIND_ADDRESS", Some("127.0.0.1:9000")),
+                ("BASE_URL", Some("https://api.example.com")),
+                ("ADMIN_API_KEY", Some("admin-key")),
+            ],
+            || {
+                let config = AppConfig::from_env().expect("valid env should parse");
+                assert_eq!(config.database_url, "postgres://localhost:5432/iqrah");
+                assert_eq!(config.pack_storage_path, PathBuf::from("/tmp/packs"));
+                assert_eq!(config.google_client_id, "google-client-id");
+                assert_eq!(config.bind_address.to_string(), "127.0.0.1:9000");
+                assert_eq!(config.port, 9000);
+                assert_eq!(config.base_url, "https://api.example.com");
+                assert_eq!(config.admin_api_key, "admin-key");
+            },
+        );
+    }
+
+    #[test]
+    fn from_env_errors_when_required_database_url_is_missing() {
+        with_env(
+            &[("JWT_SECRET", Some("secret"))],
+            || match AppConfig::from_env() {
+                Err(ConfigError::MissingVar(name)) => assert_eq!(name, "DATABASE_URL"),
+                other => panic!("expected missing DATABASE_URL error, got: {other:?}"),
+            },
+        );
+    }
+
+    #[test]
+    fn from_env_errors_when_required_jwt_secret_is_missing() {
+        with_env(
+            &[("DATABASE_URL", Some("postgres://localhost:5432/iqrah"))],
+            || match AppConfig::from_env() {
+                Err(ConfigError::MissingVar(name)) => assert_eq!(name, "JWT_SECRET"),
+                other => panic!("expected missing JWT_SECRET error, got: {other:?}"),
+            },
+        );
+    }
+
+    #[test]
+    fn from_env_rejects_invalid_bind_address_value() {
+        with_env(
+            &[
+                ("DATABASE_URL", Some("postgres://localhost:5432/iqrah")),
+                ("JWT_SECRET", Some("secret")),
+                ("BIND_ADDRESS", Some("127.0.0.1:99999")),
+            ],
+            || match AppConfig::from_env() {
+                Err(ConfigError::InvalidValue(name, message)) => {
+                    assert_eq!(name, "BIND_ADDRESS");
+                    assert!(message.contains("failed to parse socket address"));
+                }
+                other => panic!("expected invalid BIND_ADDRESS error, got: {other:?}"),
+            },
+        );
+    }
+
+    #[test]
+    fn from_env_rejects_db_url_without_postgres_prefix() {
+        with_env(
+            &[
+                ("DATABASE_URL", Some("mysql://localhost:3306/iqrah")),
+                ("JWT_SECRET", Some("secret")),
+            ],
+            || match AppConfig::from_env() {
+                Err(ConfigError::InvalidValue(name, message)) => {
+                    assert_eq!(name, "DATABASE_URL");
+                    assert!(message.contains("postgres:// or postgresql://"));
+                }
+                other => panic!("expected invalid DATABASE_URL error, got: {other:?}"),
+            },
+        );
     }
 }

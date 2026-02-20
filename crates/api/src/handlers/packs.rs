@@ -399,9 +399,17 @@ pub async fn get_manifest(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::assets::pack_asset_store::FsPackAssetStore;
+    use crate::assets::pack_asset_store::MockPackAssetStore;
+    use crate::auth::jwt_verifier::MockJwtVerifier;
+    use crate::test_support::{NoopAuthRepository, NoopSyncRepository, base_config, build_state};
+    use async_trait::async_trait;
     use axum::http::HeaderValue;
+    use chrono::Utc;
+    use iqrah_backend_storage::{PackInfo, PackRepository, PackVersionInfo, StorageError};
     use tokio::io::AsyncWriteExt;
 
     fn headers_with_range(value: &str) -> HeaderMap {
@@ -616,5 +624,299 @@ mod tests {
             .await
             .unwrap();
         assert!(body.is_empty());
+    }
+
+    mockall::mock! {
+        pub PackRepo {}
+
+        #[async_trait]
+        impl PackRepository for PackRepo {
+            async fn list_available(
+                &self,
+                pack_type: Option<String>,
+                language: Option<String>,
+            ) -> Result<Vec<PackInfo>, StorageError>;
+
+            async fn get_pack(&self, package_id: String) -> Result<Option<PackInfo>, StorageError>;
+            async fn list_active_pack_versions(&self) -> Result<Vec<PackVersionInfo>, StorageError>;
+            async fn list_all_packs(&self) -> Result<Vec<PackVersionInfo>, StorageError>;
+            async fn get_active_version_id(&self, package_id: String) -> Result<Option<i32>, StorageError>;
+            async fn register_pack(
+                &self,
+                package_id: String,
+                pack_type: String,
+                language: String,
+                name: String,
+                description: Option<String>,
+            ) -> Result<(), StorageError>;
+            async fn add_version(
+                &self,
+                package_id: String,
+                version: String,
+                file_path: String,
+                size_bytes: i64,
+                sha256: String,
+                min_app_version: Option<String>,
+            ) -> Result<(), StorageError>;
+            async fn publish_pack(&self, package_id: String) -> Result<(), StorageError>;
+        }
+    }
+
+    #[tokio::test]
+    async fn list_packs_happy_path_maps_download_url() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_available()
+            .times(1)
+            .with(
+                mockall::predicate::eq(Some("translation".to_string())),
+                mockall::predicate::eq(Some("en".to_string())),
+            )
+            .returning(|_, _| {
+                Ok(vec![PackInfo {
+                    version_id: 1,
+                    package_id: "pack-en".to_string(),
+                    pack_type: "translation".to_string(),
+                    version: "1.0.0".to_string(),
+                    language: "en".to_string(),
+                    name: "English".to_string(),
+                    description: Some("desc".to_string()),
+                    size_bytes: 10,
+                    sha256: "abc".repeat(21) + "a",
+                    file_path: "pack-en/1.0.0/pack.bin".to_string(),
+                }])
+            });
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+
+        let mut config = base_config();
+        config.base_url = "https://api.example.com".to_string();
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            config,
+        );
+
+        let Json(response) = list_packs(
+            axum::extract::State(state),
+            axum::extract::Query(ListPacksQuery {
+                pack_type: Some("translation".to_string()),
+                language: Some("en".to_string()),
+            }),
+        )
+        .await
+        .expect("list should succeed");
+
+        assert_eq!(response.packs.len(), 1);
+        assert_eq!(
+            response.packs[0].download_url,
+            "https://api.example.com/v1/packs/pack-en/download"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_packs_returns_500_on_repository_error() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_available()
+            .times(1)
+            .returning(|_, _| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let err = list_packs(
+            axum::extract::State(state),
+            axum::extract::Query(ListPacksQuery {
+                pack_type: None,
+                language: None,
+            }),
+        )
+        .await
+        .expect_err("storage error should fail");
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn global_manifest_happy_path_maps_manifest_entries() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_active_pack_versions()
+            .times(1)
+            .returning(|| {
+                Ok(vec![PackVersionInfo {
+                    id: "pack-1".to_string(),
+                    name: "English".to_string(),
+                    description: Some("desc".to_string()),
+                    pack_type: "translation".to_string(),
+                    version: "1.0.0".to_string(),
+                    sha256: "abc".repeat(21) + "a",
+                    file_size_bytes: 10,
+                    created_at: Utc::now(),
+                }])
+            });
+        repo.expect_list_available().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let Json(response) = get_global_manifest(axum::extract::State(state))
+            .await
+            .expect("manifest should succeed");
+
+        assert_eq!(response.packs.len(), 1);
+        assert_eq!(response.packs[0].id, PackId("pack-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_manifest_returns_404_when_pack_missing() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_pack().times(1).returning(|_| Ok(None));
+        repo.expect_list_available().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let err = get_manifest(
+            axum::extract::State(state),
+            axum::extract::Path("missing".to_string()),
+        )
+        .await
+        .expect_err("missing pack should fail");
+
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn download_pack_returns_404_when_repository_has_no_pack() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_pack().times(1).returning(|_| Ok(None));
+        repo.expect_list_available().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let result = download_pack(
+            axum::extract::State(state),
+            axum::extract::Path("missing".to_string()),
+            HeaderMap::new(),
+        )
+        .await;
+        let err = match result {
+            Err(err) => err,
+            Ok(_) => panic!("missing pack should fail"),
+        };
+
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn download_pack_returns_404_when_file_does_not_exist() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_pack().times(1).returning(|_| {
+            Ok(Some(PackInfo {
+                version_id: 5,
+                package_id: "pack-1".to_string(),
+                pack_type: "translation".to_string(),
+                version: "1.0.0".to_string(),
+                language: "en".to_string(),
+                name: "English".to_string(),
+                description: None,
+                size_bytes: 10,
+                sha256: "abc".repeat(21) + "a",
+                file_path: "pack-1/1.0.0/pack.bin".to_string(),
+            }))
+        });
+        repo.expect_list_available().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+
+        let mut store = MockPackAssetStore::new();
+        store.expect_exists().times(1).returning(|_| Ok(false));
+        store.expect_open_for_read().times(0);
+        store.expect_create_for_write().times(0);
+        store.expect_ensure_parent_dirs().times(0);
+        store.expect_resolve_path().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(store),
+            base_config(),
+        );
+
+        let result = download_pack(
+            axum::extract::State(state),
+            axum::extract::Path("pack-1".to_string()),
+            HeaderMap::new(),
+        )
+        .await;
+        let err = match result {
+            Err(err) => err,
+            Ok(_) => panic!("missing file should fail"),
+        };
+
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
     }
 }

@@ -82,6 +82,64 @@ SQLx cache maintenance:
 - HTTP integration tests: in-process Axum app, no external network calls.
 - Business logic should be tested without live DB/network by injecting mocked trait objects.
 
+## Testing Contract
+
+### Golden Rule
+**Every behaviour change MUST be accompanied by a test that would fail
+without that change.** If you modify a function and no test fails when you
+revert your change, your test is worthless. Write the test first or
+immediately after, never skip it.
+
+### Coverage Gates (enforced in CI)
+- `crates/domain`: 95% line coverage minimum
+- `crates/api`: 85% line coverage minimum
+- `crates/storage`: excluded from coverage gate — integration tests only
+- Run `just coverage-ci` before submitting any change
+
+### Test File Conventions
+- Unit tests live in `#[cfg(test)] mod tests {}` at the bottom of the file
+  they test — NOT in a separate `tests/` file
+- Integration tests (requiring live DB) live in `crates/storage/tests/`
+  behind `#[cfg(feature = "postgres-tests")]`
+- Never test storage logic with mocked DB — mock at the repository trait
+  boundary, not inside the DB layer
+
+### Mandatory Test Cases Per Handler
+Every Axum handler must have unit tests covering:
+1. Happy path → correct HTTP status + response shape
+2. Auth failure → 401
+3. Input validation failure → 400
+4. Downstream (repo/service) error → 500
+
+### Mandatory Test Cases Per Domain Type
+Every newtype must have:
+1. Valid construction
+2. Serde round-trip
+3. Rejection of invalid input (if validation exists)
+
+### Mock Usage Rules
+- All I/O traits are annotated with `#[cfg_attr(test, mockall::automock)]`
+- Inject mocks via `Arc<dyn Trait + Send + Sync>` — never use concrete types
+  in handler/service signatures
+- MockXxx structs are available automatically — do not hand-write fakes
+- Always assert `.times(n)` on expectations to catch unexpected extra calls
+
+### What You Must NOT Do
+- Do NOT add `#[allow(dead_code)]` to silence untested code — fix or delete it
+- Do NOT write tests that only assert `result.is_ok()` without checking the value
+- Do NOT mock the storage layer internals (sqlx, PgPool) — mock at the
+  repository trait boundary only
+- Do NOT skip tests to meet a deadline — coverage gate will block CI
+- Do NOT commit with `SQLX_OFFLINE=false` or missing `.sqlx/` cache
+
+### Running Tests Locally
+```bash
+just test                  # unit tests only, no DB needed
+just test-integration      # requires: docker compose up -d postgres
+just coverage              # HTML report, opens in browser
+just coverage-ci           # same as CI gate, fails under 85%
+```
+
 ## Error Handling Contract
 - Library crates (`api`, `storage`, `domain`, `config`) use typed `thiserror` error enums.
 - Binary crate (`crates/api/src/main.rs`) uses `anyhow` at the top-level boundary.

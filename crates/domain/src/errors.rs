@@ -136,3 +136,119 @@ impl From<sqlx::Error> for DomainError {
         DomainError::Database(err.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::body::to_bytes;
+    use serde_json::Value;
+    use validator::Validate;
+
+    use super::*;
+
+    #[derive(Debug, Validate)]
+    struct ValidationFixture {
+        #[validate(length(min = 1))]
+        name: String,
+    }
+
+    #[test]
+    fn status_code_mapping_matches_error_variants() {
+        assert_eq!(
+            DomainError::Validation("x".to_string()).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            DomainError::ValidationErrors(vec!["x".to_string()]).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            DomainError::NotFound("x".to_string()).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            DomainError::Unauthorized("x".to_string()).status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            DomainError::Forbidden("x".to_string()).status_code(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            DomainError::Conflict("x".to_string()).status_code(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            DomainError::BusinessLogic("x".to_string()).status_code(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            DomainError::RateLimitExceeded.status_code(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            DomainError::Database("x".to_string()).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn into_response_includes_validation_error_details() {
+        tokio_test::block_on(async {
+            let response =
+                DomainError::ValidationErrors(vec!["field: bad".to_string()]).into_response();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+            let body = to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("response body should be readable");
+            let json: Value = serde_json::from_slice(&body).expect("body should be valid json");
+
+            assert_eq!(json["error"], "Validation failed");
+            assert_eq!(json["details"][0], "field: bad");
+        });
+    }
+
+    #[test]
+    fn into_response_uses_display_message_for_simple_errors() {
+        tokio_test::block_on(async {
+            let response = DomainError::NotFound("Pack missing".to_string()).into_response();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+            let body = to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("response body should be readable");
+            let json: Value = serde_json::from_slice(&body).expect("body should be valid json");
+            assert_eq!(json["error"], "Resource not found: Pack missing");
+            assert!(json["details"].is_null());
+        });
+    }
+
+    #[test]
+    fn from_validation_errors_maps_field_messages() {
+        let errors = ValidationFixture {
+            name: "".to_string(),
+        }
+        .validate()
+        .expect_err("fixture should fail validation");
+
+        let domain_error = DomainError::from_validation_errors(errors);
+        match domain_error {
+            DomainError::ValidationErrors(messages) => {
+                assert!(!messages.is_empty());
+                assert!(messages[0].contains("name"));
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn from_sqlx_error_maps_to_database_variant() {
+        let err = sqlx::Error::Protocol("protocol violation".to_string());
+        let mapped = DomainError::from(err);
+
+        match mapped {
+            DomainError::Database(message) => assert!(message.contains("protocol violation")),
+            other => panic!("expected database error, got: {other:?}"),
+        }
+    }
+}

@@ -30,3 +30,26 @@ impl PackVerificationCache {
         self.entries.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_marks_invalidates_and_clears_versions() {
+        let cache = PackVerificationCache::new();
+
+        assert!(!cache.is_verified(10));
+        cache.mark_verified(10);
+        cache.mark_verified(11);
+        assert!(cache.is_verified(10));
+        assert!(cache.is_verified(11));
+
+        cache.invalidate(10);
+        assert!(!cache.is_verified(10));
+        assert!(cache.is_verified(11));
+
+        cache.clear();
+        assert!(!cache.is_verified(11));
+    }
+}

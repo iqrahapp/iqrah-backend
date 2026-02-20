@@ -16,4 +16,7 @@ axum = { workspace = true }
 sqlx = { workspace = true }
 
 [dev-dependencies]
-mockall = "0.13"
+mockall = { workspace = true }
+tokio-test = { workspace = true }
+rstest = { workspace = true }
+fake = { workspace = true }

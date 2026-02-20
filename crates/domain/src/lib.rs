@@ -86,3 +86,104 @@ pub struct ReadyResponse {
     pub status: String,
     pub database: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    use super::*;
+
+    #[test]
+    fn pack_type_and_status_serialize_as_snake_case() {
+        let pack_type =
+            serde_json::to_string(&PackType::Translation).expect("pack type should serialize");
+        let status =
+            serde_json::to_string(&PackStatus::Published).expect("pack status should serialize");
+
+        assert_eq!(pack_type, "\"translation\"");
+        assert_eq!(status, "\"published\"");
+    }
+
+    #[test]
+    fn user_roundtrips_through_serde() {
+        let user = User {
+            id: UserId(Uuid::new_v4()),
+            oauth_sub: "oauth-sub-1".to_string(),
+            created_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&user).expect("user should serialize");
+        let restored: User = serde_json::from_str(&json).expect("user should deserialize");
+
+        assert_eq!(restored.id, user.id);
+        assert_eq!(restored.oauth_sub, user.oauth_sub);
+    }
+
+    #[test]
+    fn pack_roundtrips_through_serde() {
+        let pack = Pack {
+            package_id: PackId("translation.en".to_string()),
+            pack_type: PackType::Translation,
+            version: "1.2.3".to_string(),
+            language: "en".to_string(),
+            status: PackStatus::Published,
+            file_path: Some("translation.en/1.2.3/pack.bin".to_string()),
+            sha256: Some("abc".repeat(21) + "a"),
+            created_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&pack).expect("pack should serialize");
+        let restored: Pack = serde_json::from_str(&json).expect("pack should deserialize");
+
+        assert_eq!(restored.package_id, pack.package_id);
+        assert_eq!(restored.version, pack.version);
+        assert_eq!(restored.language, pack.language);
+    }
+
+    #[test]
+    fn manifest_response_roundtrips_through_serde() {
+        let manifest = PackManifestResponse {
+            packs: vec![PackManifestEntry {
+                id: PackId("pack-1".to_string()),
+                name: "English Pack".to_string(),
+                description: Some("Description".to_string()),
+                pack_type: "translation".to_string(),
+                version: "1.0.0".to_string(),
+                sha256: "abc".repeat(21) + "a",
+                file_size_bytes: 1024,
+                created_at: Utc::now(),
+                download_url: "http://localhost:8080/v1/packs/pack-1/download".to_string(),
+            }],
+        };
+
+        let json = serde_json::to_string(&manifest).expect("manifest should serialize");
+        let restored: PackManifestResponse =
+            serde_json::from_str(&json).expect("manifest should deserialize");
+
+        assert_eq!(restored.packs.len(), 1);
+        assert_eq!(restored.packs[0].id, PackId("pack-1".to_string()));
+    }
+
+    #[test]
+    fn health_and_ready_responses_serialize_expected_shape() {
+        let health = HealthResponse {
+            status: "ok".to_string(),
+            version: "1.0.0".to_string(),
+            build_sha: "abc123".to_string(),
+            uptime_seconds: 5,
+        };
+        let ready = ReadyResponse {
+            status: "degraded".to_string(),
+            database: "disconnected".to_string(),
+        };
+
+        let health_json = serde_json::to_value(&health).expect("health should serialize");
+        let ready_json = serde_json::to_value(&ready).expect("ready should serialize");
+
+        assert_eq!(health_json["status"], "ok");
+        assert_eq!(health_json["build_sha"], "abc123");
+        assert_eq!(ready_json["status"], "degraded");
+        assert_eq!(ready_json["database"], "disconnected");
+    }
+}

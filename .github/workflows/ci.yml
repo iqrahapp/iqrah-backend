@@ -27,6 +27,11 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Install tools
+        run: |
+          cargo install cargo-llvm-cov --locked
+          cargo install cargo-nextest --locked
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -38,7 +43,49 @@ jobs:
           SQLX_OFFLINE: "true"
         run: |
           cargo build --workspace --locked
-          cargo test --workspace --locked
+          cargo nextest run --workspace --locked
+
+  coverage:
+    needs: rust
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Run coverage
+        env:
+          SQLX_OFFLINE: "true"
+        run: |
+          cargo llvm-cov --package iqrah-backend-domain \
+            --ignore-filename-regex "(migrations|tests|main\.rs|crates/storage/src)" \
+            --fail-under-lines 95 \
+            --no-report
+          cargo llvm-cov --package iqrah-backend-api \
+            --ignore-filename-regex "(migrations|tests|main\.rs|crates/storage/src)" \
+            --fail-under-lines 85 \
+            --no-report
+          cargo llvm-cov --package iqrah-backend-config \
+            --ignore-filename-regex "(migrations|tests|main\.rs|crates/storage/src)" \
+            --fail-under-lines 90 \
+            --no-report
+          cargo llvm-cov --workspace \
+            --ignore-filename-regex "(migrations|tests|main\.rs|crates/storage/src)" \
+            --fail-under-lines 85 \
+            --lcov --output-path coverage.lcov
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.lcov
 
   sqlx-cache:
     runs-on: ubuntu-latest

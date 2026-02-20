@@ -45,6 +45,7 @@ pub fn auth_middleware(headers: &HeaderMap, jwt_secret: &str) -> Result<UserId, 
 }
 
 /// Axum extractor that validates JWT and provides authenticated user id.
+#[derive(Debug)]
 pub struct AuthUser(pub UserId);
 
 impl FromRequestParts<Arc<AppState>> for AuthUser {
@@ -61,6 +62,7 @@ impl FromRequestParts<Arc<AppState>> for AuthUser {
 }
 
 /// Extractor that enforces admin key for observability endpoints.
+#[derive(Debug)]
 pub struct AdminApiKey;
 
 impl FromRequestParts<Arc<AppState>> for AdminApiKey {
@@ -88,5 +90,167 @@ impl FromRequestParts<Arc<AppState>> for AdminApiKey {
         }
 
         Ok(Self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::body::Body;
+    use axum::extract::FromRequestParts;
+    use axum::http::{Request, StatusCode, header};
+    use jsonwebtoken::{EncodingKey, Header, encode};
+
+    use super::*;
+    use crate::test_support::{base_config, build_default_state, build_state};
+    use iqrah_backend_domain::{Claims, JwtSubject};
+
+    fn make_jwt(secret: &str, sub: &str) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_secs();
+
+        encode(
+            &Header::default(),
+            &Claims {
+                sub: JwtSubject(sub.to_string()),
+                exp: now + 3600,
+                iat: now,
+            },
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("token should encode")
+    }
+
+    #[test]
+    fn auth_middleware_rejects_missing_authorization_header() {
+        let headers = HeaderMap::new();
+        let result = auth_middleware(&headers, "secret");
+        assert_eq!(result, Err(StatusCode::UNAUTHORIZED));
+    }
+
+    #[test]
+    fn auth_middleware_rejects_invalid_bearer_prefix() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Token abc".parse().expect("valid header"),
+        );
+        let result = auth_middleware(&headers, "secret");
+        assert_eq!(result, Err(StatusCode::UNAUTHORIZED));
+    }
+
+    #[test]
+    fn auth_middleware_accepts_valid_token_and_returns_user_id() {
+        let user_id = uuid::Uuid::new_v4();
+        let token = make_jwt("test-secret", &user_id.to_string());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {token}").parse().expect("valid header"),
+        );
+
+        let result = auth_middleware(&headers, "test-secret").expect("token should validate");
+        assert_eq!(result.0, user_id);
+    }
+
+    #[test]
+    fn auth_middleware_rejects_invalid_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer not-a-jwt".parse().expect("valid header"),
+        );
+        let result = auth_middleware(&headers, "secret");
+        assert_eq!(result, Err(StatusCode::UNAUTHORIZED));
+    }
+
+    #[tokio::test]
+    async fn auth_user_extractor_returns_unauthorized_error_for_missing_token() {
+        let state = build_default_state();
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/users/me")
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let err = AuthUser::from_request_parts(&mut parts, &state)
+            .await
+            .expect_err("extractor should fail");
+
+        assert!(matches!(err, DomainError::Unauthorized(_)));
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_accepts_matching_key() {
+        let state = build_default_state();
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header("x-admin-key", "admin-secret")
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect("admin key should pass");
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_rejects_missing_key() {
+        let state = build_default_state();
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let err = AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect_err("missing key should fail");
+        assert!(matches!(err, DomainError::Unauthorized(_)));
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_rejects_invalid_key() {
+        let state = build_default_state();
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header("x-admin-key", "wrong-key")
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let err = AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect_err("invalid key should fail");
+        assert!(matches!(err, DomainError::Forbidden(_)));
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_rejects_when_admin_is_disabled() {
+        let mut config = base_config();
+        config.admin_api_key.clear();
+        let state = build_state(
+            Arc::new(crate::test_support::NoopPackRepository),
+            Arc::new(crate::test_support::NoopAuthRepository),
+            Arc::new(crate::test_support::NoopSyncRepository),
+            Arc::new(crate::test_support::NoopJwtVerifier),
+            Arc::new(crate::test_support::NoopPackAssetStore),
+            config,
+        );
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header("x-admin-key", "ignored")
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let err = AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect_err("disabled admin endpoint should fail");
+        assert!(matches!(err, DomainError::Forbidden(_)));
     }
 }

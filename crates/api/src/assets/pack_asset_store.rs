@@ -65,3 +65,53 @@ impl PackAssetStore for FsPackAssetStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn fs_pack_asset_store_creates_dirs_writes_and_reads_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = FsPackAssetStore::new(temp.path());
+        let relative = "packs/en/1.0.0/pack.bin";
+
+        store
+            .ensure_parent_dirs(relative)
+            .await
+            .expect("dirs should be created");
+        let mut writer = store
+            .create_for_write(relative)
+            .await
+            .expect("file should be created");
+        writer
+            .write_all(b"abc")
+            .await
+            .expect("write should succeed");
+        writer.flush().await.expect("flush should succeed");
+
+        assert!(store.exists(relative).await.expect("exists should succeed"));
+
+        let mut reader = store
+            .open_for_read(relative)
+            .await
+            .expect("file should open");
+        let mut data = Vec::new();
+        reader
+            .read_to_end(&mut data)
+            .await
+            .expect("read should succeed");
+        assert_eq!(data, b"abc");
+    }
+
+    #[tokio::test]
+    async fn fs_pack_asset_store_resolve_path_joins_base_and_relative() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = FsPackAssetStore::new(temp.path());
+
+        let resolved = store.resolve_path("a/b/c.bin");
+        assert!(resolved.ends_with("a/b/c.bin"));
+    }
+}

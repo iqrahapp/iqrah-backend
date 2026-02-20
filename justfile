@@ -6,8 +6,29 @@ default:
 build:
     cargo build --workspace --locked
 
+# Run all unit tests (no DB required)
 test:
-    cargo test --workspace --locked
+    cargo nextest run --workspace
+
+# Run integration tests (requires live DB)
+test-integration:
+    cargo nextest run --workspace --features postgres-tests
+
+# Coverage report (HTML)
+coverage:
+    cargo llvm-cov --workspace \
+      --ignore-filename-regex "(migrations|tests|main\\.rs|crates/storage/src)" \
+      --html --open
+
+# Coverage in CI (fail under threshold)
+coverage-ci:
+    cargo llvm-cov --workspace \
+      --ignore-filename-regex "(migrations|tests|main\\.rs|crates/storage/src)" \
+      --fail-under-lines 85
+
+# Mutation testing (run occasionally, not in main CI)
+mutants:
+    cargo mutants --workspace
 
 lint:
     cargo clippy --workspace --all-targets --locked -- -D warnings
