@@ -60,6 +60,13 @@ pub async fn google_auth(
             tracing::error!(error = %e, "Failed to find/create user");
             DomainError::Database(e.to_string())
         })?;
+    let oauth_sub = oauth_sub.as_ref().to_string();
+    let role = state
+        .config
+        .admin_oauth_sub_allowlist
+        .iter()
+        .any(|allowed_sub| allowed_sub == &oauth_sub)
+        .then(|| "admin".to_string());
 
     let expires_in = 3600u64;
     let now = std::time::SystemTime::now()
@@ -75,6 +82,8 @@ pub async fn google_auth(
         sub: JwtSubject(user.id.to_string()),
         exp: now + expires_in,
         iat: now,
+        role,
+        oauth_sub: Some(oauth_sub),
     };
 
     let token = encode(
@@ -137,6 +146,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::IntoResponse;
     use chrono::Utc;
+    use jsonwebtoken::{DecodingKey, Validation, decode};
     use iqrah_backend_domain::UserId;
     use iqrah_backend_storage::{AuthRepository, StorageError, UserRecord};
     use tower::ServiceExt;
@@ -208,6 +218,55 @@ mod tests {
         assert_eq!(response.0.user_id, user.id);
         assert_eq!(response.0.expires_in, 3600);
         assert!(!response.0.access_token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn google_auth_assigns_admin_role_for_allowlisted_oauth_subject() {
+        let user = sample_user();
+
+        let mut verifier = MockJwtVerifier::new();
+        verifier
+            .expect_verify_google_id_token()
+            .times(1)
+            .with(mockall::predicate::eq("google-token"))
+            .returning(|_| Ok(JwtSubject("oauth-admin-sub".to_string())));
+
+        let mut auth_repo = MockAuthRepo::new();
+        let user_for_mock = user.clone();
+        auth_repo
+            .expect_find_or_create()
+            .times(1)
+            .with(mockall::predicate::eq("oauth-admin-sub"))
+            .returning(move |_| Ok(user_for_mock.clone()));
+
+        let mut config = base_config();
+        config.admin_oauth_sub_allowlist = vec!["oauth-admin-sub".to_string()];
+        let state = build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(auth_repo),
+            Arc::new(NoopSyncRepository),
+            Arc::new(verifier),
+            Arc::new(NoopPackAssetStore),
+            config,
+        );
+
+        let response = google_auth(
+            axum::extract::State(state),
+            Json(GoogleAuthRequest {
+                id_token: "google-token".to_string(),
+            }),
+        )
+        .await
+        .expect("google auth should succeed");
+
+        let token = decode::<Claims>(
+            &response.0.access_token,
+            &DecodingKey::from_secret(b"test-secret"),
+            &Validation::default(),
+        )
+        .expect("issued token should decode");
+        assert_eq!(token.claims.role.as_deref(), Some("admin"));
+        assert_eq!(token.claims.oauth_sub.as_deref(), Some("oauth-admin-sub"));
     }
 
     #[tokio::test]

@@ -45,6 +45,13 @@ pub trait PackRepository: Send + Sync {
         language: Option<String>,
     ) -> Result<Vec<PackInfo>, StorageError>;
 
+    /// Lists all published pack versions (active and historical) with optional filters.
+    async fn list_available_all_versions(
+        &self,
+        pack_type: Option<String>,
+        language: Option<String>,
+    ) -> Result<Vec<PackInfo>, StorageError>;
+
     /// Returns active version details for a published package id.
     async fn get_pack(&self, package_id: String) -> Result<Option<PackInfo>, StorageError>;
 
@@ -106,6 +113,20 @@ impl PgPackRepository {
         language: Option<&str>,
     ) -> Result<Vec<PackInfo>, StorageError> {
         <Self as PackRepository>::list_available(
+            self,
+            pack_type.map(ToString::to_string),
+            language.map(ToString::to_string),
+        )
+        .await
+    }
+
+    /// Backward-compatible helper for call sites requesting all published versions.
+    pub async fn list_available_all_versions(
+        &self,
+        pack_type: Option<&str>,
+        language: Option<&str>,
+    ) -> Result<Vec<PackInfo>, StorageError> {
+        <Self as PackRepository>::list_available_all_versions(
             self,
             pack_type.map(ToString::to_string),
             language.map(ToString::to_string),
@@ -205,6 +226,55 @@ impl PackRepository for PgPackRepository {
               AND ($1::text IS NULL OR p.pack_type = $1)
               AND ($2::text IS NULL OR p.language = $2)
             ORDER BY p.package_id
+            "#,
+            pack_type.as_deref(),
+            language.as_deref()
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(StorageError::Query)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| PackInfo {
+                version_id: row.version_id,
+                package_id: row.package_id,
+                pack_type: row.pack_type,
+                version: row.version,
+                language: row.language,
+                name: row.name,
+                description: row.description,
+                size_bytes: row.size_bytes,
+                sha256: row.sha256,
+                file_path: row.file_path,
+            })
+            .collect())
+    }
+
+    async fn list_available_all_versions(
+        &self,
+        pack_type: Option<String>,
+        language: Option<String>,
+    ) -> Result<Vec<PackInfo>, StorageError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                pv.id AS "version_id!",
+                p.package_id,
+                p.pack_type,
+                pv.version,
+                p.language,
+                COALESCE(p.name, p.package_id) AS "name!",
+                p.description,
+                pv.size_bytes,
+                pv.sha256,
+                pv.file_path
+            FROM packs p
+            JOIN pack_versions pv ON p.package_id = pv.package_id
+            WHERE p.status = 'published'
+              AND ($1::text IS NULL OR p.pack_type = $1)
+              AND ($2::text IS NULL OR p.language = $2)
+            ORDER BY p.package_id, pv.published_at DESC, pv.id DESC
             "#,
             pack_type.as_deref(),
             language.as_deref()
@@ -489,6 +559,10 @@ mod tests {
         ));
         assert!(matches!(
             repo.list_all_packs().await,
+            Err(StorageError::Query(_))
+        ));
+        assert!(matches!(
+            repo.list_available_all_versions(None, None).await,
             Err(StorageError::Query(_))
         ));
         assert!(matches!(

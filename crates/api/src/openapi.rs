@@ -11,6 +11,7 @@ use utoipa::{
         description = "REST API for the Iqrah mobile app"
     ),
     paths(
+        crate::metrics,
         crate::handlers::auth::google_auth,
         crate::handlers::auth::get_me,
         crate::handlers::packs::list_packs,
@@ -24,10 +25,17 @@ use utoipa::{
         crate::handlers::sync::admin_recent_conflicts,
         crate::handlers::sync::admin_user_sync_status,
         crate::handlers::admin_packs::register_pack,
+        crate::handlers::admin_packs::upload_pack,
         crate::handlers::admin_packs::add_version,
         crate::handlers::admin_packs::publish_pack,
         crate::handlers::admin_packs::disable_pack,
-        crate::handlers::admin_packs::list_all_packs
+        crate::handlers::admin_packs::list_all_packs,
+        crate::handlers::admin_releases::create_release,
+        crate::handlers::admin_releases::attach_release_artifact,
+        crate::handlers::admin_releases::validate_release,
+        crate::handlers::admin_releases::publish_release,
+        crate::handlers::releases::get_latest_release,
+        crate::handlers::releases::get_release_manifest
     ),
     components(
         schemas(
@@ -37,14 +45,24 @@ use utoipa::{
             iqrah_backend_domain::UserProfile,
             iqrah_backend_domain::UserId,
             iqrah_backend_domain::DeviceId,
+            iqrah_backend_domain::ReleaseId,
             iqrah_backend_domain::PackId,
             iqrah_backend_domain::GoalId,
             iqrah_backend_domain::TimestampMs,
             iqrah_backend_domain::PackType,
             iqrah_backend_domain::PackStatus,
+            iqrah_backend_domain::DatasetReleaseStatus,
+            iqrah_backend_domain::ArtifactRole,
             iqrah_backend_domain::Pack,
             iqrah_backend_domain::PackManifestEntry,
             iqrah_backend_domain::PackManifestResponse,
+            iqrah_backend_domain::DatasetRelease,
+            iqrah_backend_domain::DatasetReleaseArtifact,
+            iqrah_backend_domain::ReleaseArtifactManifestEntry,
+            iqrah_backend_domain::ReleaseManifestResponse,
+            iqrah_backend_domain::LatestReleaseResponse,
+            iqrah_backend_domain::ReleaseValidationIssue,
+            iqrah_backend_domain::ReleaseValidationReport,
             iqrah_backend_domain::SyncPushRequest,
             iqrah_backend_domain::SyncPushResponse,
             iqrah_backend_domain::SyncPullRequest,
@@ -71,16 +89,24 @@ use utoipa::{
             crate::handlers::packs::PackChecksumResponse,
             crate::handlers::admin_packs::RegisterPackRequest,
             crate::handlers::admin_packs::RegisterPackResponse,
+            crate::handlers::admin_packs::UploadPackMultipartBody,
             crate::handlers::admin_packs::AddVersionMultipartBody,
             crate::handlers::admin_packs::AddVersionResponse,
             crate::handlers::admin_packs::PublishPackResponse,
-            crate::handlers::admin_packs::DisablePackResponse
+            crate::handlers::admin_packs::DisablePackResponse,
+            crate::handlers::admin_releases::CreateReleaseRequest,
+            crate::handlers::admin_releases::CreateReleaseResponse,
+            crate::handlers::admin_releases::AttachReleaseArtifactRequest,
+            crate::handlers::admin_releases::AttachReleaseArtifactResponse,
+            crate::handlers::admin_releases::ValidateReleaseResponse,
+            crate::handlers::admin_releases::PublishReleaseResponse
         )
     ),
     modifiers(&SecuritySchemes),
     tags(
         (name = "auth", description = "Authentication and device registration"),
         (name = "packs", description = "Content pack management"),
+        (name = "releases", description = "Dataset release discovery"),
         (name = "sync", description = "Client data synchronisation"),
         (name = "admin", description = "Admin-only operations")
     )

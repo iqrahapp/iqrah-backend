@@ -1,0 +1,49 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO dataset_release_artifacts (release_id, package_id, required, artifact_role)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (release_id, package_id) DO UPDATE SET\n                required = EXCLUDED.required,\n                artifact_role = EXCLUDED.artifact_role\n            RETURNING release_id, package_id, required, artifact_role, created_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "release_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "package_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "required",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "artifact_role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e0ae0158286868d076eaf9aae2cd0ec1ebc27c6b3c9c272a9ff8dc599c723c69"
+}

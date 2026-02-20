@@ -158,11 +158,8 @@ impl PgSyncRepository {
         user_id: UserId,
         device_id: DeviceId,
         setting: &SettingChange,
-        now: DateTime<Utc>,
+        server_updated_at: DateTime<Utc>,
     ) -> Result<u64, StorageError> {
-        let incoming_updated_at =
-            timestamp_from_millis(setting.client_updated_at, "setting.client_updated_at")?;
-
         let result = sqlx::query!(
             r#"
             INSERT INTO user_settings (user_id, key, value, updated_at, updated_by_device)
@@ -172,11 +169,12 @@ impl PgSyncRepository {
                 updated_at = EXCLUDED.updated_at,
                 updated_by_device = EXCLUDED.updated_by_device
             WHERE user_settings.updated_at < EXCLUDED.updated_at
+              AND user_settings.value IS DISTINCT FROM EXCLUDED.value
             "#,
             user_id.0,
             setting.key,
             setting.value,
-            incoming_updated_at,
+            server_updated_at,
             device_id.0
         )
         .execute(&mut **tx)
@@ -190,7 +188,7 @@ impl PgSyncRepository {
                 "setting",
                 &setting.key,
                 device_id,
-                incoming_updated_at,
+                server_updated_at,
             )
             .await?;
             return Ok(result.rows_affected());
@@ -219,7 +217,7 @@ impl PgSyncRepository {
                 "updated_at": winner.updated_at.timestamp_millis(),
                 "updated_by_device": winner.updated_by_device,
             }),
-            now,
+            server_updated_at,
         )
         .await?;
 
@@ -232,7 +230,7 @@ impl PgSyncRepository {
         user_id: UserId,
         device_id: DeviceId,
         state: &MemoryStateChange,
-        now: DateTime<Utc>,
+        server_updated_at: DateTime<Utc>,
     ) -> Result<u64, StorageError> {
         let last_reviewed = state
             .last_reviewed_at
@@ -242,9 +240,6 @@ impl PgSyncRepository {
             .next_review_at
             .map(|ts| timestamp_from_millis(ts, "memory_state.next_review_at"))
             .transpose()?;
-        let incoming_updated_at =
-            timestamp_from_millis(state.client_updated_at, "memory_state.client_updated_at")?;
-
         let result = sqlx::query!(
             r#"
             INSERT INTO memory_states (user_id, node_id, energy, fsrs_stability, fsrs_difficulty,
@@ -259,6 +254,13 @@ impl PgSyncRepository {
                 updated_at = EXCLUDED.updated_at,
                 updated_by_device = EXCLUDED.updated_by_device
             WHERE memory_states.updated_at < EXCLUDED.updated_at
+              AND (
+                    memory_states.energy IS DISTINCT FROM EXCLUDED.energy
+                 OR memory_states.fsrs_stability IS DISTINCT FROM EXCLUDED.fsrs_stability
+                 OR memory_states.fsrs_difficulty IS DISTINCT FROM EXCLUDED.fsrs_difficulty
+                 OR memory_states.last_reviewed_at IS DISTINCT FROM EXCLUDED.last_reviewed_at
+                 OR memory_states.next_review_at IS DISTINCT FROM EXCLUDED.next_review_at
+              )
             "#,
             user_id.0,
             state.node_id,
@@ -267,7 +269,7 @@ impl PgSyncRepository {
             state.fsrs_difficulty,
             last_reviewed,
             next_review,
-            incoming_updated_at,
+            server_updated_at,
             device_id.0
         )
         .execute(&mut **tx)
@@ -281,7 +283,7 @@ impl PgSyncRepository {
                 "memory_state",
                 &state.node_id.to_string(),
                 device_id,
-                incoming_updated_at,
+                server_updated_at,
             )
             .await?;
             return Ok(result.rows_affected());
@@ -310,7 +312,7 @@ impl PgSyncRepository {
                 "updated_at": winner.updated_at.timestamp_millis(),
                 "updated_by_device": winner.updated_by_device,
             }),
-            now,
+            server_updated_at,
         )
         .await?;
 
@@ -323,15 +325,13 @@ impl PgSyncRepository {
         user_id: UserId,
         device_id: DeviceId,
         session: &SessionChange,
-        now: DateTime<Utc>,
+        server_updated_at: DateTime<Utc>,
     ) -> Result<u64, StorageError> {
         let started = timestamp_from_millis(session.started_at, "session.started_at")?;
         let completed = session
             .completed_at
             .map(|ts| timestamp_from_millis(ts, "session.completed_at"))
             .transpose()?;
-        let incoming_updated_at =
-            timestamp_from_millis(session.client_updated_at, "session.client_updated_at")?;
         let goal_id = session.goal_id.as_ref().map(|value| value.0.as_str());
 
         let result = sqlx::query!(
@@ -344,6 +344,10 @@ impl PgSyncRepository {
                 updated_at = EXCLUDED.updated_at,
                 updated_by_device = EXCLUDED.updated_by_device
             WHERE sessions.updated_at < EXCLUDED.updated_at
+              AND (
+                    sessions.completed_at IS DISTINCT FROM EXCLUDED.completed_at
+                 OR sessions.items_completed IS DISTINCT FROM EXCLUDED.items_completed
+              )
             "#,
             session.id,
             user_id.0,
@@ -351,7 +355,7 @@ impl PgSyncRepository {
             started,
             completed,
             session.items_completed,
-            incoming_updated_at,
+            server_updated_at,
             device_id.0
         )
         .execute(&mut **tx)
@@ -365,7 +369,7 @@ impl PgSyncRepository {
                 "session",
                 &session.id.to_string(),
                 device_id,
-                incoming_updated_at,
+                server_updated_at,
             )
             .await?;
             return Ok(result.rows_affected());
@@ -393,7 +397,7 @@ impl PgSyncRepository {
                 "updated_at": winner.updated_at.timestamp_millis(),
                 "updated_by_device": winner.updated_by_device,
             }),
-            now,
+            server_updated_at,
         )
         .await?;
 
@@ -406,11 +410,8 @@ impl PgSyncRepository {
         user_id: UserId,
         device_id: DeviceId,
         item: &SessionItemChange,
-        now: DateTime<Utc>,
+        server_updated_at: DateTime<Utc>,
     ) -> Result<u64, StorageError> {
-        let incoming_updated_at =
-            timestamp_from_millis(item.client_updated_at, "session_item.client_updated_at")?;
-
         let result = sqlx::query!(
             r#"
             INSERT INTO session_items (id, session_id, user_id, node_id, exercise_type, grade, duration_ms, updated_at, updated_by_device)
@@ -421,6 +422,10 @@ impl PgSyncRepository {
                 updated_at = EXCLUDED.updated_at,
                 updated_by_device = EXCLUDED.updated_by_device
             WHERE session_items.updated_at < EXCLUDED.updated_at
+              AND (
+                    session_items.grade IS DISTINCT FROM EXCLUDED.grade
+                 OR session_items.duration_ms IS DISTINCT FROM EXCLUDED.duration_ms
+              )
             "#,
             item.id,
             item.session_id,
@@ -429,7 +434,7 @@ impl PgSyncRepository {
             item.exercise_type,
             item.grade,
             item.duration_ms,
-            incoming_updated_at,
+            server_updated_at,
             device_id.0
         )
         .execute(&mut **tx)
@@ -443,7 +448,7 @@ impl PgSyncRepository {
                 "session_item",
                 &item.id.to_string(),
                 device_id,
-                incoming_updated_at,
+                server_updated_at,
             )
             .await?;
             return Ok(result.rows_affected());
@@ -471,7 +476,7 @@ impl PgSyncRepository {
                 "updated_at": winner.updated_at.timestamp_millis(),
                 "updated_by_device": winner.updated_by_device,
             }),
-            now,
+            server_updated_at,
         )
         .await?;
 
@@ -576,7 +581,7 @@ impl SyncRepository for PgSyncRepository {
         changes: SyncChanges,
     ) -> Result<(u64, u64), StorageError> {
         let mut tx = self.pool.begin().await.map_err(StorageError::Query)?;
-        let now = Utc::now();
+        let now = timestamp_from_millis(TimestampMs(Utc::now().timestamp_millis()), "server.now")?;
         let mut applied: u64 = 0;
         let mut skipped: u64 = 0;
 

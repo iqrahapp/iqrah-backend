@@ -44,6 +44,17 @@ pub struct AddVersionMultipartBody {
     pub file: String,
 }
 
+/// Multipart payload for direct pack upload.
+#[derive(Debug, utoipa::ToSchema)]
+pub struct UploadPackMultipartBody {
+    #[schema(example = "translation.en")]
+    pub package_id: String,
+    #[schema(example = "1.0.0")]
+    pub version: String,
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
+}
+
 /// Response for adding a pack version.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AddVersionResponse {
@@ -80,7 +91,7 @@ pub struct DisablePackResponse {
         (status = 403, description = "Invalid/disabled admin key", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn register_pack(
     State(state): State<Arc<AppState>>,
@@ -130,14 +141,53 @@ pub async fn register_pack(
         (status = 403, description = "Invalid/disabled admin key", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn add_version(
     State(state): State<Arc<AppState>>,
     _admin: AdminApiKey,
     Path(package_id): Path<String>,
-    mut multipart: Multipart,
+    multipart: Multipart,
 ) -> Result<(axum::http::StatusCode, Json<AddVersionResponse>), DomainError> {
+    let response = parse_and_store_upload(state, Some(package_id), multipart).await?;
+
+    Ok((axum::http::StatusCode::CREATED, Json(response)))
+}
+
+/// Uploads a new version file using multipart fields that include `package_id`.
+#[utoipa::path(
+    post,
+    path = "/v1/admin/packs/upload",
+    tag = "admin",
+    request_body(
+        content = UploadPackMultipartBody,
+        content_type = "multipart/form-data"
+    ),
+    responses(
+        (status = 201, description = "Version uploaded", body = AddVersionResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []), ("bearer_auth" = []))
+)]
+pub async fn upload_pack(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminApiKey,
+    multipart: Multipart,
+) -> Result<(axum::http::StatusCode, Json<AddVersionResponse>), DomainError> {
+    let response = parse_and_store_upload(state, None, multipart).await?;
+
+    Ok((axum::http::StatusCode::CREATED, Json(response)))
+}
+
+async fn parse_and_store_upload(
+    state: Arc<AppState>,
+    package_id_from_path: Option<String>,
+    mut multipart: Multipart,
+) -> Result<AddVersionResponse, DomainError> {
+    let mut package_id = package_id_from_path;
     let mut version: Option<String> = None;
     let mut filename = "pack.bin".to_string();
     let mut relative_path: Option<String> = None;
@@ -151,6 +201,14 @@ pub async fn add_version(
         .map_err(|e| DomainError::Validation(format!("Invalid multipart payload: {e}")))?
     {
         let name = field.name().unwrap_or_default().to_string();
+        if name == "package_id" && package_id.is_none() {
+            package_id =
+                Some(field.text().await.map_err(|e| {
+                    DomainError::Validation(format!("Invalid package_id field: {e}"))
+                })?);
+            continue;
+        }
+
         if name == "version" {
             version = Some(
                 field
@@ -166,13 +224,18 @@ pub async fn add_version(
                 filename = given.to_string();
             }
 
+            let package_id_value = package_id.clone().ok_or_else(|| {
+                DomainError::Validation(
+                    "Multipart field `package_id` must be provided before `file`".to_string(),
+                )
+            })?;
             let version_value = version.clone().ok_or_else(|| {
                 DomainError::Validation(
                     "Multipart field `version` must be provided before `file`".to_string(),
                 )
             })?;
 
-            let relative = format!("{package_id}/{version_value}/{filename}");
+            let relative = format!("{package_id_value}/{version_value}/{filename}");
             state
                 .pack_asset_store
                 .ensure_parent_dirs(&relative)
@@ -213,6 +276,8 @@ pub async fn add_version(
         })?;
     }
 
+    let package_id = package_id
+        .ok_or_else(|| DomainError::Validation("Missing `package_id` field".to_string()))?;
     let version =
         version.ok_or_else(|| DomainError::Validation("Missing `version` field".to_string()))?;
     let relative_path =
@@ -231,14 +296,11 @@ pub async fn add_version(
         .await
         .map_err(|e| DomainError::Database(e.to_string()))?;
 
-    Ok((
-        axum::http::StatusCode::CREATED,
-        Json(AddVersionResponse {
-            version,
-            sha256,
-            file_size_bytes: file_size,
-        }),
-    ))
+    Ok(AddVersionResponse {
+        version,
+        sha256,
+        file_size_bytes: file_size,
+    })
 }
 
 /// Publishes an existing pack.
@@ -255,7 +317,7 @@ pub async fn add_version(
         (status = 403, description = "Invalid/disabled admin key", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn publish_pack(
     State(state): State<Arc<AppState>>,
@@ -287,7 +349,7 @@ pub async fn publish_pack(
         (status = 404, description = "Pack not found", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn disable_pack(
     State(state): State<Arc<AppState>>,
@@ -326,7 +388,7 @@ pub async fn disable_pack(
         (status = 403, description = "Invalid/disabled admin key", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn list_all_packs(
     State(state): State<Arc<AppState>>,
@@ -380,6 +442,11 @@ mod tests {
         #[async_trait]
         impl PackRepository for PackRepo {
             async fn list_available(
+                &self,
+                pack_type: Option<String>,
+                language: Option<String>,
+            ) -> Result<Vec<PackInfo>, StorageError>;
+            async fn list_available_all_versions(
                 &self,
                 pack_type: Option<String>,
                 language: Option<String>,
@@ -868,6 +935,179 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn upload_pack_route_happy_path_writes_file_and_returns_sha() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_active_version_id()
+            .times(1)
+            .with(mockall::predicate::eq("pack-upload".to_string()))
+            .returning(|_| Ok(None));
+        repo.expect_add_version()
+            .times(1)
+            .withf(
+                |package_id, version, file_path, size_bytes, sha256, min_app_version| {
+                    package_id == "pack-upload"
+                        && version == "2.0.0"
+                        && file_path == "pack-upload/2.0.0/upload.bin"
+                        && *size_bytes == 3
+                        && sha256
+                            == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                        && min_app_version.is_none()
+                },
+            )
+            .returning(|_, _, _, _, _, _| Ok(()));
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_list_available_all_versions().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(temp_dir.path())),
+            base_config(),
+        );
+        let app = build_router(state);
+
+        let (boundary, body) = multipart_body(&[
+            ("package_id", None, b"pack-upload"),
+            ("version", None, b"2.0.0"),
+            ("file", Some("upload.bin"), b"abc"),
+        ]);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/packs/upload")
+                    .header("x-admin-key", "admin-secret")
+                    .header(
+                        header::CONTENT_TYPE,
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn upload_pack_route_returns_400_when_package_id_missing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_list_available_all_versions().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(temp_dir.path())),
+            base_config(),
+        );
+        let app = build_router(state);
+
+        let (boundary, body) = multipart_body(&[
+            ("version", None, b"2.0.0"),
+            ("file", Some("upload.bin"), b"abc"),
+        ]);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/packs/upload")
+                    .header("x-admin-key", "admin-secret")
+                    .header(
+                        header::CONTENT_TYPE,
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn upload_pack_route_returns_500_when_repository_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+
+        let mut repo = MockPackRepo::new();
+        repo.expect_get_active_version_id()
+            .times(1)
+            .with(mockall::predicate::eq("pack-upload".to_string()))
+            .returning(|_| Ok(None));
+        repo.expect_add_version()
+            .times(1)
+            .returning(|_, _, _, _, _, _| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_publish_pack().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_list_available().times(0);
+        repo.expect_list_available_all_versions().times(0);
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(temp_dir.path())),
+            base_config(),
+        );
+        let app = build_router(state);
+
+        let (boundary, body) = multipart_body(&[
+            ("package_id", None, b"pack-upload"),
+            ("version", None, b"2.0.0"),
+            ("file", Some("upload.bin"), b"abc"),
+        ]);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/packs/upload")
+                    .header("x-admin-key", "admin-secret")
+                    .header(
+                        header::CONTENT_TYPE,
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
     async fn admin_route_returns_401_when_admin_key_missing() {
         let state = build_state(
             Arc::new(MockPackRepo::new()),
@@ -922,6 +1162,34 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/v1/admin/packs/pack-1/disable")
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn upload_pack_route_returns_401_when_admin_key_missing() {
+        let state = build_state(
+            Arc::new(MockPackRepo::new()),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmp").path(),
+            )),
+            base_config(),
+        );
+        let app = build_router(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/packs/upload")
                     .body(Body::empty())
                     .expect("request should build"),
             )

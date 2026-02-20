@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO session_items (id, session_id, user_id, node_id, exercise_type, grade, duration_ms, updated_at, updated_by_device)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n            ON CONFLICT (id) DO UPDATE SET\n                grade = EXCLUDED.grade,\n                duration_ms = EXCLUDED.duration_ms,\n                updated_at = EXCLUDED.updated_at,\n                updated_by_device = EXCLUDED.updated_by_device\n            WHERE session_items.updated_at < EXCLUDED.updated_at\n              AND (\n                    session_items.grade IS DISTINCT FROM EXCLUDED.grade\n                 OR session_items.duration_ms IS DISTINCT FROM EXCLUDED.duration_ms\n              )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Int4",
+        "Int4",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "63e766a78c31ca9733ae8213b1494834be5c2fe87a74c71c5e83496ed8661127"
+}

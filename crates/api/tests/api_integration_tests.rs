@@ -12,7 +12,9 @@ use iqrah_backend_api::cache::pack_verification_cache::PackVerificationCache;
 use iqrah_backend_api::{AppState, build_router};
 use iqrah_backend_config::AppConfig;
 use iqrah_backend_domain::{Claims, JwtSubject};
-use iqrah_backend_storage::{PgAuthRepository, PgPackRepository, PgSyncRepository};
+use iqrah_backend_storage::{
+    PgAuthRepository, PgPackRepository, PgReleaseRepository, PgSyncRepository,
+};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use secrecy::SecretString;
 use serde_json::{Value, json};
@@ -41,7 +43,8 @@ fn test_state(pool: PgPool, pack_dir: String) -> Arc<AppState> {
         pool: pool.clone(),
         pack_repo: Arc::new(PgPackRepository::new(pool.clone())),
         auth_repo: Arc::new(PgAuthRepository::new(pool.clone())),
-        sync_repo: Arc::new(PgSyncRepository::new(pool)),
+        sync_repo: Arc::new(PgSyncRepository::new(pool.clone())),
+        release_repo: Arc::new(PgReleaseRepository::new(pool)),
         jwt_verifier: Arc::new(FakeVerifier),
         pack_asset_store: Arc::new(FsPackAssetStore::new(&pack_dir)),
         pack_cache,
@@ -54,6 +57,7 @@ fn test_state(pool: PgPool, pack_dir: String) -> Arc<AppState> {
             port: 0,
             base_url: "http://localhost:8080".to_string(),
             admin_api_key: "".to_string(),
+            admin_oauth_sub_allowlist: Vec::new(),
         },
         start_time: Instant::now(),
     })
@@ -70,6 +74,8 @@ fn auth_header(user_id: Uuid) -> String {
             sub: JwtSubject(user_id.to_string()),
             exp: now + 3600,
             iat: now,
+            role: None,
+            oauth_sub: None,
         },
         &EncodingKey::from_secret(b"test-secret"),
     )

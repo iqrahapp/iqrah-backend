@@ -141,7 +141,7 @@ pub struct ConflictQuery {
         (status = 403, description = "Invalid/disabled admin key", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn admin_recent_conflicts(
     State(state): State<Arc<AppState>>,
@@ -188,7 +188,7 @@ pub async fn admin_recent_conflicts(
         (status = 404, description = "User not found", body = ApiError),
         (status = 500, description = "Internal error", body = ApiError)
     ),
-    security(("admin_api_key" = []))
+    security(("admin_api_key" = []), ("bearer_auth" = []))
 )]
 pub async fn admin_user_sync_status(
     State(state): State<Arc<AppState>>,

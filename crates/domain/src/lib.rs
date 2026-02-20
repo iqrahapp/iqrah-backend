@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod errors;
 pub mod newtypes;
+pub mod release;
 pub mod sync;
 
 use chrono::{DateTime, Utc};
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub use auth::*;
 pub use errors::*;
 pub use newtypes::*;
+pub use release::*;
 pub use sync::*;
 
 /// User entity.

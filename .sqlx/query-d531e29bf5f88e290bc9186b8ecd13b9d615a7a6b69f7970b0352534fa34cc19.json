@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                dra.package_id,\n                dra.artifact_role,\n                p.status AS \"pack_status?\",\n                pv.sha256 AS \"sha256?\",\n                pv.size_bytes AS \"size_bytes?\",\n                pv.file_path AS \"file_path?\"\n            FROM dataset_release_artifacts dra\n            LEFT JOIN packs p\n                ON p.package_id = dra.package_id\n            LEFT JOIN pack_versions pv\n                ON pv.package_id = dra.package_id\n               AND pv.is_active = true\n            WHERE dra.release_id = $1\n            ORDER BY dra.package_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "package_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "artifact_role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "pack_status?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "sha256?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "size_bytes?",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "file_path?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d531e29bf5f88e290bc9186b8ecd13b9d615a7a6b69f7970b0352534fa34cc19"
+}

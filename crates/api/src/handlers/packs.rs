@@ -40,6 +40,8 @@ pub struct ListPacksQuery {
     pub pack_type: Option<String>,
     #[schema(example = "en")]
     pub language: Option<String>,
+    #[schema(example = false)]
+    pub include_all_versions: Option<bool>,
 }
 
 /// Pack info response DTO.
@@ -144,7 +146,8 @@ pub struct PackChecksumResponse {
     tag = "packs",
     params(
         ("type" = Option<String>, Query, description = "Filter by pack type"),
-        ("language" = Option<String>, Query, description = "Filter by language code")
+        ("language" = Option<String>, Query, description = "Filter by language code"),
+        ("include_all_versions" = Option<bool>, Query, description = "If true, include published historical versions for debugging")
     ),
     responses(
         (status = 200, description = "Available packs", body = ListPacksResponse),
@@ -155,11 +158,19 @@ pub async fn list_packs(
     State(state): State<Arc<AppState>>,
     AxumQuery(query): AxumQuery<ListPacksQuery>,
 ) -> Result<Json<ListPacksResponse>, DomainError> {
-    let packs = state
-        .pack_repo
-        .list_available(query.pack_type, query.language)
-        .await
-        .map_err(|e| DomainError::Database(e.to_string()))?;
+    let packs = if query.include_all_versions.unwrap_or(false) {
+        state
+            .pack_repo
+            .list_available_all_versions(query.pack_type, query.language)
+            .await
+            .map_err(|e| DomainError::Database(e.to_string()))?
+    } else {
+        state
+            .pack_repo
+            .list_available(query.pack_type, query.language)
+            .await
+            .map_err(|e| DomainError::Database(e.to_string()))?
+    };
 
     let base_url = &state.config.base_url;
     let dtos = packs
@@ -886,6 +897,11 @@ mod tests {
                 pack_type: Option<String>,
                 language: Option<String>,
             ) -> Result<Vec<PackInfo>, StorageError>;
+            async fn list_available_all_versions(
+                &self,
+                pack_type: Option<String>,
+                language: Option<String>,
+            ) -> Result<Vec<PackInfo>, StorageError>;
 
             async fn get_pack(&self, package_id: String) -> Result<Option<PackInfo>, StorageError>;
             async fn list_active_pack_versions(&self) -> Result<Vec<PackVersionInfo>, StorageError>;
@@ -936,6 +952,7 @@ mod tests {
                     file_path: "pack-en/1.0.0/pack.bin".to_string(),
                 }])
             });
+        repo.expect_list_available_all_versions().times(0);
         repo.expect_get_pack().times(0);
         repo.expect_list_active_pack_versions().times(0);
         repo.expect_list_all_packs().times(0);
@@ -961,6 +978,7 @@ mod tests {
             axum::extract::Query(ListPacksQuery {
                 pack_type: Some("translation".to_string()),
                 language: Some("en".to_string()),
+                include_all_versions: None,
             }),
         )
         .await
@@ -979,6 +997,7 @@ mod tests {
         repo.expect_list_available()
             .times(1)
             .returning(|_, _| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_list_available_all_versions().times(0);
         repo.expect_get_pack().times(0);
         repo.expect_list_active_pack_versions().times(0);
         repo.expect_list_all_packs().times(0);
@@ -1002,12 +1021,85 @@ mod tests {
             axum::extract::Query(ListPacksQuery {
                 pack_type: None,
                 language: None,
+                include_all_versions: None,
             }),
         )
         .await
         .expect_err("storage error should fail");
 
         assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn list_packs_include_all_versions_uses_all_versions_query() {
+        let mut repo = MockPackRepo::new();
+        repo.expect_list_available().times(0);
+        repo.expect_list_available_all_versions()
+            .times(1)
+            .with(
+                mockall::predicate::eq(Some("translation".to_string())),
+                mockall::predicate::eq(Some("en".to_string())),
+            )
+            .returning(|_, _| {
+                Ok(vec![
+                    PackInfo {
+                        version_id: 10,
+                        package_id: "pack-en".to_string(),
+                        pack_type: "translation".to_string(),
+                        version: "1.0.0".to_string(),
+                        language: "en".to_string(),
+                        name: "English".to_string(),
+                        description: None,
+                        size_bytes: 100,
+                        sha256: "abc".repeat(21) + "a",
+                        file_path: "pack-en/1.0.0/pack.bin".to_string(),
+                    },
+                    PackInfo {
+                        version_id: 11,
+                        package_id: "pack-en".to_string(),
+                        pack_type: "translation".to_string(),
+                        version: "1.1.0".to_string(),
+                        language: "en".to_string(),
+                        name: "English".to_string(),
+                        description: None,
+                        size_bytes: 110,
+                        sha256: "bcd".repeat(21) + "b",
+                        file_path: "pack-en/1.1.0/pack.bin".to_string(),
+                    },
+                ])
+            });
+        repo.expect_get_pack().times(0);
+        repo.expect_list_active_pack_versions().times(0);
+        repo.expect_list_all_packs().times(0);
+        repo.expect_get_active_version_id().times(0);
+        repo.expect_register_pack().times(0);
+        repo.expect_add_version().times(0);
+        repo.expect_publish_pack().times(0);
+        repo.expect_disable_pack().times(0);
+
+        let state = build_state(
+            Arc::new(repo),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(MockPackAssetStore::new()),
+            base_config(),
+        );
+
+        let Json(response) = list_packs(
+            axum::extract::State(state),
+            axum::extract::Query(ListPacksQuery {
+                pack_type: Some("translation".to_string()),
+                language: Some("en".to_string()),
+                include_all_versions: Some(true),
+            }),
+        )
+        .await
+        .expect("list should succeed");
+
+        assert_eq!(response.packs.len(), 2);
+        assert_eq!(response.packs[0].version, "1.0.0");
+        assert_eq!(response.packs[1].version, "1.1.0");
     }
 
     #[tokio::test]

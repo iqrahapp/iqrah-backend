@@ -11,8 +11,8 @@ use iqrah_backend_api::cache::pack_verification_cache::PackVerificationCache;
 use iqrah_backend_api::{AppState, build_router};
 use iqrah_backend_config::AppConfig;
 use iqrah_backend_storage::{
-    AuthRepository, PackRepository, PgAuthRepository, PgPackRepository, PgSyncRepository,
-    SyncRepository, create_pool, run_migrations,
+    AuthRepository, PackRepository, PgAuthRepository, PgPackRepository, PgReleaseRepository,
+    PgSyncRepository, ReleaseRepository, SyncRepository, create_pool, run_migrations,
 };
 
 #[tokio::main]
@@ -35,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let pack_repo: Arc<dyn PackRepository> = Arc::new(PgPackRepository::new(pool.clone()));
     let auth_repo: Arc<dyn AuthRepository> = Arc::new(PgAuthRepository::new(pool.clone()));
     let sync_repo: Arc<dyn SyncRepository> = Arc::new(PgSyncRepository::new(pool.clone()));
+    let release_repo: Arc<dyn ReleaseRepository> = Arc::new(PgReleaseRepository::new(pool.clone()));
 
     let google_jwt_verifier = Arc::new(
         GoogleJwtVerifier::new(reqwest::Client::new(), config.google_client_id.clone()).await?,
@@ -51,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         pack_repo,
         auth_repo,
         sync_repo,
+        release_repo,
         jwt_verifier,
         pack_asset_store,
         pack_cache: PackVerificationCache::new(),

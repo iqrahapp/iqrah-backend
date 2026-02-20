@@ -53,6 +53,30 @@ impl From<DeviceId> for Uuid {
     }
 }
 
+/// Stable dataset release identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(transparent)]
+#[schema(value_type = String, example = "9f9f88ce-f30b-4f7f-9ea9-2de9e53ca6f1")]
+pub struct ReleaseId(pub Uuid);
+
+impl Display for ReleaseId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<Uuid> for ReleaseId {
+    fn from(value: Uuid) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ReleaseId> for Uuid {
+    fn from(value: ReleaseId) -> Self {
+        value.0
+    }
+}
+
 /// Stable pack identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
@@ -218,6 +242,15 @@ mod tests {
         assert_eq!(device_id.to_string(), raw.to_string());
         assert_eq!(Uuid::from(device_id), raw);
         assert_serde_roundtrip(device_id);
+    }
+
+    #[test]
+    fn release_id_supports_conversion_display_and_serde() {
+        let raw = Uuid::new_v4();
+        let release_id = ReleaseId::from(raw);
+        assert_eq!(release_id.to_string(), raw.to_string());
+        assert_eq!(Uuid::from(release_id), raw);
+        assert_serde_roundtrip(release_id);
     }
 
     #[test]

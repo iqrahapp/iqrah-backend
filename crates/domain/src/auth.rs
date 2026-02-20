@@ -40,6 +40,12 @@ pub struct Claims {
     pub exp: u64, // expiration timestamp
     #[schema(example = 1_899_996_400_u64)]
     pub iat: u64, // issued at
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "admin", nullable = true)]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "google-subject-123", nullable = true)]
+    pub oauth_sub: Option<String>,
 }
 
 #[cfg(test)]
@@ -64,6 +70,8 @@ mod tests {
             sub: JwtSubject::new("subject-123").expect("valid subject"),
             exp: 2_000_000_000,
             iat: 1_900_000_000,
+            role: Some("admin".to_string()),
+            oauth_sub: Some("google-subject-123".to_string()),
         };
 
         let serialized = serde_json::to_string(&claims).expect("claims should serialize");
@@ -73,6 +81,8 @@ mod tests {
         assert_eq!(restored.sub, claims.sub);
         assert_eq!(restored.exp, claims.exp);
         assert_eq!(restored.iat, claims.iat);
+        assert_eq!(restored.role, claims.role);
+        assert_eq!(restored.oauth_sub, claims.oauth_sub);
     }
 
     #[test]

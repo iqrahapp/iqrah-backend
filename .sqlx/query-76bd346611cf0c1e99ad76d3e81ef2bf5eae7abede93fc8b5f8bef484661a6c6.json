@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_settings (user_id, key, value, updated_at, updated_by_device)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (user_id, key) DO UPDATE SET\n                value = EXCLUDED.value,\n                updated_at = EXCLUDED.updated_at,\n                updated_by_device = EXCLUDED.updated_by_device\n            WHERE user_settings.updated_at < EXCLUDED.updated_at\n              AND user_settings.value IS DISTINCT FROM EXCLUDED.value\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "76bd346611cf0c1e99ad76d3e81ef2bf5eae7abede93fc8b5f8bef484661a6c6"
+}

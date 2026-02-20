@@ -34,6 +34,8 @@ pub struct AppConfig {
     pub base_url: String,
     /// Shared admin key for observability endpoints. Empty disables admin endpoints.
     pub admin_api_key: String,
+    /// Allowlisted OAuth subjects that should receive admin role in API JWTs.
+    pub admin_oauth_sub_allowlist: Vec<String>,
 }
 
 impl AppConfig {
@@ -66,6 +68,7 @@ impl AppConfig {
             bind_address,
             base_url: env_var_or("BASE_URL", "http://localhost:8080"),
             admin_api_key: env_var_or("ADMIN_API_KEY", ""),
+            admin_oauth_sub_allowlist: parse_csv_env("ADMIN_OAUTH_SUB_ALLOWLIST"),
         })
     }
 }
@@ -76,6 +79,16 @@ fn env_var(name: &str) -> Result<String, ConfigError> {
 
 fn env_var_or(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
+}
+
+fn parse_csv_env(name: &str) -> Vec<String> {
+    env::var(name)
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 #[cfg(test)]
@@ -99,6 +112,7 @@ mod tests {
             "BIND_ADDRESS",
             "BASE_URL",
             "ADMIN_API_KEY",
+            "ADMIN_OAUTH_SUB_ALLOWLIST",
         ];
 
         let original: Vec<(String, Option<String>)> = keys
@@ -147,6 +161,10 @@ mod tests {
                 ("BIND_ADDRESS", Some("127.0.0.1:9000")),
                 ("BASE_URL", Some("https://api.example.com")),
                 ("ADMIN_API_KEY", Some("admin-key")),
+                (
+                    "ADMIN_OAUTH_SUB_ALLOWLIST",
+                    Some("google-sub-1, google-sub-2, ,google-sub-3"),
+                ),
             ],
             || {
                 let config = AppConfig::from_env().expect("valid env should parse");
@@ -157,6 +175,10 @@ mod tests {
                 assert_eq!(config.port, 9000);
                 assert_eq!(config.base_url, "https://api.example.com");
                 assert_eq!(config.admin_api_key, "admin-key");
+                assert_eq!(
+                    config.admin_oauth_sub_allowlist,
+                    vec!["google-sub-1", "google-sub-2", "google-sub-3"]
+                );
             },
         );
     }

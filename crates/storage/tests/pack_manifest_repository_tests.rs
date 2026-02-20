@@ -192,3 +192,34 @@ async fn get_active_version_id_returns_current_version_id(pool: PgPool) -> Resul
 
     Ok(())
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_available_all_versions_includes_historical_published_versions(
+    pool: PgPool,
+) -> Result<(), sqlx::Error> {
+    let repo = PgPackRepository::new(pool);
+
+    repo.register_pack("hist-pack", "quran", "en", "History Pack", None)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    repo.add_version("hist-pack", "1.0.0", "hist-v1.pack", 10, "sha-1", None)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    repo.publish_pack("hist-pack")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    repo.add_version("hist-pack", "1.1.0", "hist-v2.pack", 11, "sha-2", None)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    let versions = repo
+        .list_available_all_versions(Some("quran"), Some("en"))
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    assert_eq!(versions.len(), 2);
+    assert_eq!(versions[0].version, "1.1.0");
+    assert_eq!(versions[1].version, "1.0.0");
+
+    Ok(())
+}

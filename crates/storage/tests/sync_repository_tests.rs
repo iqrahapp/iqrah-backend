@@ -111,7 +111,7 @@ async fn sync_push_then_pull_returns_changes(pool: PgPool) -> Result<(), sqlx::E
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn stale_client_timestamp_is_rejected_across_devices(
+async fn later_arrival_wins_even_with_older_client_timestamp(
     pool: PgPool,
 ) -> Result<(), sqlx::Error> {
     let user_id = Uuid::new_v4();
@@ -159,8 +159,8 @@ async fn stale_client_timestamp_is_rejected_across_devices(
         .await
         .map_err(|e| sqlx::Error::Protocol(format!("apply_changes failed: {e}")))?;
 
-    assert_eq!(applied, 0);
-    assert_eq!(skipped, 1);
+    assert_eq!(applied, 1);
+    assert_eq!(skipped, 0);
 
     let value: serde_json::Value = sqlx::query_scalar!(
         r#"
@@ -173,7 +173,7 @@ async fn stale_client_timestamp_is_rejected_across_devices(
     )
     .fetch_one(&pool)
     .await?;
-    assert_eq!(value, json!("newer-but-arrived-first"));
+    assert_eq!(value, json!("older-but-arrived-later"));
 
     Ok(())
 }

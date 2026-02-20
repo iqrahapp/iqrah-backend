@@ -61,6 +61,9 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       },
@@ -135,6 +138,88 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/packs/upload": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Uploads a new version file using multipart fields that include `package_id`.",
+        "operationId": "upload_pack",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadPackMultipartBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Version uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddVersionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       }
@@ -222,6 +307,9 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       }
@@ -289,6 +377,9 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       }
@@ -376,6 +467,378 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/releases": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Creates a draft release.",
+        "operationId": "create_release",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Draft release created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateReleaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/releases/{id}/artifacts": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Attaches an artifact package to a release.",
+        "operationId": "attach_release_artifact",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Release ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachReleaseArtifactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Artifact attached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachReleaseArtifactResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/releases/{id}/publish": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Publishes a release after validation.",
+        "operationId": "publish_release",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Release ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Release published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishReleaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Release validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/releases/{id}/validate": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Validates release publish constraints.",
+        "operationId": "validate_release",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Release ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateReleaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       }
@@ -453,6 +916,9 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       }
@@ -530,6 +996,9 @@
         "security": [
           {
             "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
           }
         ]
       }
@@ -595,6 +1064,55 @@
         }
       }
     },
+    "/v1/metrics": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Prometheus-style metrics endpoint for basic service observability.",
+        "operationId": "metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus metrics",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient admin credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/packs/available": {
       "get": {
         "tags": [
@@ -619,6 +1137,15 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "include_all_versions",
+            "in": "query",
+            "description": "If true, include published historical versions for debugging",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -875,6 +1402,109 @@
           },
           "404": {
             "description": "Pack not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/releases/latest": {
+      "get": {
+        "tags": [
+          "releases"
+        ],
+        "summary": "Returns the latest published release and required artifacts.",
+        "operationId": "get_latest_release",
+        "responses": {
+          "200": {
+            "description": "Latest published release",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestReleaseResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No published release found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/releases/{id}/manifest": {
+      "get": {
+        "tags": [
+          "releases"
+        ],
+        "summary": "Returns the full artifact manifest for one published release.",
+        "operationId": "get_release_manifest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Release ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Release manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseManifestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid release id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1241,6 +1871,52 @@
           }
         }
       },
+      "ArtifactRole": {
+        "type": "string",
+        "description": "Artifact semantic role within a dataset release.",
+        "enum": [
+          "core_content_db",
+          "knowledge_graph",
+          "morphology",
+          "translation_catalog",
+          "audio_catalog",
+          "optional_pack"
+        ],
+        "example": "core_content_db"
+      },
+      "AttachReleaseArtifactRequest": {
+        "type": "object",
+        "description": "Request to attach an artifact to an existing release.",
+        "required": [
+          "package_id",
+          "artifact_role",
+          "required"
+        ],
+        "properties": {
+          "artifact_role": {
+            "$ref": "#/components/schemas/ArtifactRole"
+          },
+          "package_id": {
+            "type": "string",
+            "example": "translation.en"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AttachReleaseArtifactResponse": {
+        "type": "object",
+        "description": "Response for artifact attachment.",
+        "required": [
+          "artifact"
+        ],
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/DatasetReleaseArtifact"
+          }
+        }
+      },
       "AuthResponse": {
         "type": "object",
         "description": "Auth response with access token.",
@@ -1264,6 +1940,128 @@
             "$ref": "#/components/schemas/UserId"
           }
         }
+      },
+      "CreateReleaseRequest": {
+        "type": "object",
+        "description": "Request to create a draft dataset release.",
+        "required": [
+          "version",
+          "created_by"
+        ],
+        "properties": {
+          "created_by": {
+            "type": "string",
+            "example": "admin@iqrah"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "First production release slice"
+          },
+          "version": {
+            "type": "string",
+            "example": "2026.02.20.1"
+          }
+        }
+      },
+      "CreateReleaseResponse": {
+        "type": "object",
+        "description": "Response for draft release creation.",
+        "required": [
+          "release"
+        ],
+        "properties": {
+          "release": {
+            "$ref": "#/components/schemas/DatasetRelease"
+          }
+        }
+      },
+      "DatasetRelease": {
+        "type": "object",
+        "description": "Dataset release entity.",
+        "required": [
+          "id",
+          "version",
+          "status",
+          "created_by",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-02-20T16:00:00Z"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ReleaseId"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "example": "2026-02-20T17:00:00Z"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DatasetReleaseStatus"
+          },
+          "version": {
+            "type": "string",
+            "example": "2026.02.20.1"
+          }
+        }
+      },
+      "DatasetReleaseArtifact": {
+        "type": "object",
+        "description": "Artifact attached to a release.",
+        "required": [
+          "release_id",
+          "package_id",
+          "required",
+          "artifact_role",
+          "created_at"
+        ],
+        "properties": {
+          "artifact_role": {
+            "$ref": "#/components/schemas/ArtifactRole"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-02-20T16:05:00Z"
+          },
+          "package_id": {
+            "$ref": "#/components/schemas/PackId"
+          },
+          "release_id": {
+            "$ref": "#/components/schemas/ReleaseId"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DatasetReleaseStatus": {
+        "type": "string",
+        "description": "Dataset release lifecycle status.",
+        "enum": [
+          "draft",
+          "published",
+          "deprecated"
+        ],
+        "example": "draft"
       },
       "DeviceId": {
         "type": "string",
@@ -1315,6 +2113,25 @@
           "version": {
             "type": "string",
             "example": "1.0.0"
+          }
+        }
+      },
+      "LatestReleaseResponse": {
+        "type": "object",
+        "description": "Latest published release with required artifacts.",
+        "required": [
+          "release",
+          "required_artifacts"
+        ],
+        "properties": {
+          "release": {
+            "$ref": "#/components/schemas/DatasetRelease"
+          },
+          "required_artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseArtifactManifestEntry"
+            }
           }
         }
       },
@@ -1678,6 +2495,22 @@
           }
         }
       },
+      "PublishReleaseResponse": {
+        "type": "object",
+        "description": "Publish response for a release.",
+        "required": [
+          "published",
+          "release"
+        ],
+        "properties": {
+          "published": {
+            "type": "boolean"
+          },
+          "release": {
+            "$ref": "#/components/schemas/DatasetRelease"
+          }
+        }
+      },
       "RegisterPackRequest": {
         "type": "object",
         "description": "Request to register a new pack.",
@@ -1710,6 +2543,115 @@
           "id": {
             "type": "string",
             "example": "550e8400-e29b-41d4-a716-446655440000"
+          }
+        }
+      },
+      "ReleaseArtifactManifestEntry": {
+        "type": "object",
+        "description": "Artifact manifest entry used by clients.",
+        "required": [
+          "package_id",
+          "required",
+          "artifact_role",
+          "version",
+          "sha256",
+          "file_size_bytes",
+          "download_url"
+        ],
+        "properties": {
+          "artifact_role": {
+            "$ref": "#/components/schemas/ArtifactRole"
+          },
+          "download_url": {
+            "type": "string",
+            "example": "http://localhost:8080/v1/packs/translation.en/download"
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1024
+          },
+          "package_id": {
+            "$ref": "#/components/schemas/PackId"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "sha256": {
+            "type": "string",
+            "example": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          }
+        }
+      },
+      "ReleaseId": {
+        "type": "string",
+        "description": "Stable dataset release identifier.",
+        "example": "9f9f88ce-f30b-4f7f-9ea9-2de9e53ca6f1"
+      },
+      "ReleaseManifestResponse": {
+        "type": "object",
+        "description": "Full manifest for one release.",
+        "required": [
+          "release",
+          "artifacts"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseArtifactManifestEntry"
+            }
+          },
+          "release": {
+            "$ref": "#/components/schemas/DatasetRelease"
+          }
+        }
+      },
+      "ReleaseValidationIssue": {
+        "type": "object",
+        "description": "One validation issue from release checks.",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "missing_required_roles"
+          },
+          "message": {
+            "type": "string",
+            "example": "Required artifact roles are missing: knowledge_graph"
+          }
+        }
+      },
+      "ReleaseValidationReport": {
+        "type": "object",
+        "description": "Result of release validation.",
+        "required": [
+          "valid",
+          "failures",
+          "warnings"
+        ],
+        "properties": {
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseValidationIssue"
+            }
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseValidationIssue"
+            }
           }
         }
       },
@@ -2122,6 +3064,29 @@
         "description": "Millisecond unix timestamp.",
         "example": 1706000000000
       },
+      "UploadPackMultipartBody": {
+        "type": "object",
+        "description": "Multipart payload for direct pack upload.",
+        "required": [
+          "package_id",
+          "version",
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary"
+          },
+          "package_id": {
+            "type": "string",
+            "example": "translation.en"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          }
+        }
+      },
       "UserId": {
         "type": "string",
         "description": "Stable user identifier.",
@@ -2152,6 +3117,18 @@
             "example": "2026-02-20T16:10:00Z"
           }
         }
+      },
+      "ValidateReleaseResponse": {
+        "type": "object",
+        "description": "Validation response for a release.",
+        "required": [
+          "report"
+        ],
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/ReleaseValidationReport"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -2175,6 +3152,10 @@
     {
       "name": "packs",
       "description": "Content pack management"
+    },
+    {
+      "name": "releases",
+      "description": "Dataset release discovery"
     },
     {
       "name": "sync",

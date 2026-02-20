@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                pv.id AS \"version_id!\",\n                p.package_id,\n                p.pack_type,\n                pv.version,\n                p.language,\n                COALESCE(p.name, p.package_id) AS \"name!\",\n                p.description,\n                pv.size_bytes,\n                pv.sha256,\n                pv.file_path\n            FROM packs p\n            JOIN pack_versions pv ON p.package_id = pv.package_id\n            WHERE p.status = 'published'\n              AND ($1::text IS NULL OR p.pack_type = $1)\n              AND ($2::text IS NULL OR p.language = $2)\n            ORDER BY p.package_id, pv.published_at DESC, pv.id DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version_id!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "package_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "pack_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "language",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "size_bytes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "sha256",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "file_path",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4a066dbf6173ea99081de49efcad248abdc870de599763aa0a31f979dd082652"
+}

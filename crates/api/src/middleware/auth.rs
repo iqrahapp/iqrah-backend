@@ -13,29 +13,32 @@ use iqrah_backend_domain::{Claims, DomainError, UserId};
 
 use crate::AppState;
 
-/// Extracts and verifies user id from Authorization header.
-pub fn auth_middleware(headers: &HeaderMap, jwt_secret: &str) -> Result<UserId, StatusCode> {
-    let auth_header = headers
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+}
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let token_data = decode::<Claims>(
+fn decode_claims(headers: &HeaderMap, jwt_secret: &str) -> Result<Claims, StatusCode> {
+    let token = bearer_token(headers).ok_or(StatusCode::UNAUTHORIZED)?;
+    decode::<Claims>(
         token,
         &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &Validation::default(),
     )
+    .map(|token_data| token_data.claims)
     .map_err(|e| {
         tracing::warn!(error = %e, "JWT verification failed");
         StatusCode::UNAUTHORIZED
-    })?;
+    })
+}
 
-    let user_id = token_data
-        .claims
+/// Extracts and verifies user id from Authorization header.
+pub fn auth_middleware(headers: &HeaderMap, jwt_secret: &str) -> Result<UserId, StatusCode> {
+    let claims = decode_claims(headers, jwt_secret)?;
+
+    let user_id = claims
         .sub
         .as_ref()
         .parse::<Uuid>()
@@ -72,21 +75,51 @@ impl FromRequestParts<Arc<AppState>> for AdminApiKey {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let expected = state.config.admin_api_key.as_str();
-        if expected.is_empty() {
-            return Err(DomainError::Forbidden(
-                "Admin observability endpoint is disabled".to_string(),
-            ));
-        }
+        let expected_key = state.config.admin_api_key.as_str();
 
-        let provided = parts
+        if let Some(provided_key) = parts
             .headers
             .get("x-admin-key")
             .and_then(|value| value.to_str().ok())
-            .ok_or_else(|| DomainError::Unauthorized("Missing admin key".to_string()))?;
+        {
+            if expected_key.is_empty() {
+                return Err(DomainError::Forbidden(
+                    "Admin key authentication is disabled".to_string(),
+                ));
+            }
 
-        if provided != expected {
-            return Err(DomainError::Forbidden("Invalid admin key".to_string()));
+            if provided_key != expected_key {
+                return Err(DomainError::Forbidden("Invalid admin key".to_string()));
+            }
+
+            return Ok(Self);
+        }
+
+        let allowlist = &state.config.admin_oauth_sub_allowlist;
+        if allowlist.is_empty() {
+            return Err(DomainError::Unauthorized(
+                "Missing admin credentials".to_string(),
+            ));
+        }
+
+        let claims = decode_claims(&parts.headers, state.config.jwt_secret.expose_secret())
+            .map_err(|_| DomainError::Unauthorized("Missing admin credentials".to_string()))?;
+
+        if claims.role.as_deref() != Some("admin") {
+            return Err(DomainError::Forbidden("Admin role required".to_string()));
+        }
+
+        let oauth_sub = claims
+            .oauth_sub
+            .ok_or_else(|| DomainError::Forbidden("Admin OAuth subject missing".to_string()))?;
+
+        if !allowlist
+            .iter()
+            .any(|allowed_sub| allowed_sub == &oauth_sub)
+        {
+            return Err(DomainError::Forbidden(
+                "Admin subject not allowlisted".to_string(),
+            ));
         }
 
         Ok(Self)
@@ -118,6 +151,28 @@ mod tests {
                 sub: JwtSubject(sub.to_string()),
                 exp: now + 3600,
                 iat: now,
+                role: None,
+                oauth_sub: None,
+            },
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("token should encode")
+    }
+
+    fn make_admin_jwt(secret: &str, sub: &str, oauth_sub: &str) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_secs();
+
+        encode(
+            &Header::default(),
+            &Claims {
+                sub: JwtSubject(sub.to_string()),
+                exp: now + 3600,
+                iat: now,
+                role: Some("admin".to_string()),
+                oauth_sub: Some(oauth_sub.to_string()),
             },
             &EncodingKey::from_secret(secret.as_bytes()),
         )
@@ -251,6 +306,86 @@ mod tests {
         let err = AdminApiKey::from_request_parts(&mut parts, &state)
             .await
             .expect_err("disabled admin endpoint should fail");
+        assert!(matches!(err, DomainError::Forbidden(_)));
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_accepts_allowlisted_admin_jwt() {
+        let mut config = base_config();
+        config.admin_api_key.clear();
+        config.admin_oauth_sub_allowlist = vec!["oauth-admin".to_string()];
+        let token = make_admin_jwt("test-secret", &Uuid::new_v4().to_string(), "oauth-admin");
+        let state = build_state(
+            Arc::new(crate::test_support::NoopPackRepository),
+            Arc::new(crate::test_support::NoopAuthRepository),
+            Arc::new(crate::test_support::NoopSyncRepository),
+            Arc::new(crate::test_support::NoopJwtVerifier),
+            Arc::new(crate::test_support::NoopPackAssetStore),
+            config,
+        );
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect("allowlisted admin token should pass");
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_rejects_non_admin_jwt() {
+        let mut config = base_config();
+        config.admin_api_key.clear();
+        config.admin_oauth_sub_allowlist = vec!["oauth-admin".to_string()];
+        let token = make_jwt("test-secret", &Uuid::new_v4().to_string());
+        let state = build_state(
+            Arc::new(crate::test_support::NoopPackRepository),
+            Arc::new(crate::test_support::NoopAuthRepository),
+            Arc::new(crate::test_support::NoopSyncRepository),
+            Arc::new(crate::test_support::NoopJwtVerifier),
+            Arc::new(crate::test_support::NoopPackAssetStore),
+            config,
+        );
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let err = AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect_err("non-admin token should fail");
+        assert!(matches!(err, DomainError::Forbidden(_)));
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_rejects_non_allowlisted_admin_jwt() {
+        let mut config = base_config();
+        config.admin_api_key.clear();
+        config.admin_oauth_sub_allowlist = vec!["oauth-admin".to_string()];
+        let token = make_admin_jwt("test-secret", &Uuid::new_v4().to_string(), "oauth-other");
+        let state = build_state(
+            Arc::new(crate::test_support::NoopPackRepository),
+            Arc::new(crate::test_support::NoopAuthRepository),
+            Arc::new(crate::test_support::NoopSyncRepository),
+            Arc::new(crate::test_support::NoopJwtVerifier),
+            Arc::new(crate::test_support::NoopPackAssetStore),
+            config,
+        );
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let err = AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect_err("non-allowlisted admin token should fail");
         assert!(matches!(err, DomainError::Forbidden(_)));
     }
 }

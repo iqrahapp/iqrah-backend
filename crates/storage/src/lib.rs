@@ -6,11 +6,15 @@ use sqlx::postgres::PgPoolOptions;
 pub mod auth_repository;
 pub mod error;
 pub mod pack_repository;
+pub mod release_repository;
 pub mod sync_repository;
 
 pub use auth_repository::{AuthRepository, PgAuthRepository, UserRecord};
 pub use error::StorageError;
 pub use pack_repository::{PackInfo, PackRepository, PackVersionInfo, PgPackRepository};
+pub use release_repository::{
+    PgReleaseRepository, ReleaseManifestArtifactRecord, ReleaseManifestRecord, ReleaseRepository,
+};
 pub use sync_repository::{ConflictLogEntry, PgSyncRepository, SyncRepository};
 
 /// Creates a PostgreSQL connection pool.

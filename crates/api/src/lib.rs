@@ -11,7 +11,7 @@ pub mod routes;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{Json, Router, extract::State, http::header, routing::get};
 use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -19,13 +19,15 @@ use tower_http::trace::TraceLayer;
 use iqrah_backend_config::AppConfig;
 use iqrah_backend_domain::{HealthResponse, ReadyResponse};
 use iqrah_backend_storage::{
-    AuthRepository, PackRepository, StorageError, SyncRepository, check_connection,
+    AuthRepository, PackRepository, ReleaseRepository, StorageError, SyncRepository,
+    check_connection,
 };
 use sqlx::PgPool;
 
 use crate::assets::pack_asset_store::PackAssetStore;
 use crate::auth::jwt_verifier::JwtVerifier;
 use crate::cache::pack_verification_cache::PackVerificationCache;
+use crate::middleware::auth::AdminApiKey;
 
 /// Application state shared across handlers.
 #[derive(Clone)]
@@ -34,6 +36,7 @@ pub struct AppState {
     pub pack_repo: Arc<dyn PackRepository>,
     pub auth_repo: Arc<dyn AuthRepository>,
     pub sync_repo: Arc<dyn SyncRepository>,
+    pub release_repo: Arc<dyn ReleaseRepository>,
     pub jwt_verifier: Arc<dyn JwtVerifier>,
     pub pack_asset_store: Arc<dyn PackAssetStore>,
     pub pack_cache: PackVerificationCache,
@@ -83,9 +86,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let router = Router::new()
         .route("/v1/health", get(health))
         .route("/v1/ready", get(ready))
+        .route("/v1/metrics", get(metrics))
         .merge(routes::auth::router(state.clone()))
         .merge(routes::packs::router(state.clone()))
         .merge(routes::sync::router(state.clone()))
+        .merge(routes::releases::router(state.clone()))
         .merge(routes::admin::router(state.clone()))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
@@ -137,6 +142,47 @@ async fn ready(State(state): State<Arc<AppState>>) -> Json<ReadyResponse> {
     })
 }
 
+/// Prometheus-style metrics endpoint for basic service observability.
+#[utoipa::path(
+    get,
+    path = "/v1/metrics",
+    tag = "admin",
+    responses(
+        (status = 200, description = "Prometheus metrics", body = String, content_type = "text/plain"),
+        (status = 401, description = "Missing admin credentials", body = iqrah_backend_domain::ApiError),
+        (status = 403, description = "Insufficient admin credentials", body = iqrah_backend_domain::ApiError)
+    ),
+    security(("admin_api_key" = []), ("bearer_auth" = []))
+)]
+async fn metrics(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminApiKey,
+) -> ([(header::HeaderName, &'static str); 1], String) {
+    let uptime_seconds = state.start_time.elapsed().as_secs();
+    let db_up = if check_connection(&state.pool).await.is_ok() {
+        1
+    } else {
+        0
+    };
+
+    let body = format!(
+        "# HELP iqrah_uptime_seconds Service uptime in seconds\n\
+# TYPE iqrah_uptime_seconds gauge\n\
+iqrah_uptime_seconds {uptime_seconds}\n\
+# HELP iqrah_db_connected Database connectivity status\n\
+# TYPE iqrah_db_connected gauge\n\
+iqrah_db_connected {db_up}\n"
+    );
+
+    (
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        body,
+    )
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::path::PathBuf;
@@ -149,8 +195,8 @@ pub(crate) mod test_support {
         DeviceId, JwtSubject, SyncChanges, SyncPullCursor, TimestampMs, UserId,
     };
     use iqrah_backend_storage::{
-        AuthRepository, ConflictLogEntry, PackInfo, PackRepository, PackVersionInfo, StorageError,
-        SyncRepository, UserRecord,
+        AuthRepository, ConflictLogEntry, PackInfo, PackRepository, PackVersionInfo,
+        ReleaseManifestRecord, ReleaseRepository, StorageError, SyncRepository, UserRecord,
     };
     use secrecy::SecretString;
     use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -177,6 +223,7 @@ pub(crate) mod test_support {
             port: 0,
             base_url: "http://localhost:8080".to_string(),
             admin_api_key: "admin-secret".to_string(),
+            admin_oauth_sub_allowlist: Vec::new(),
         }
     }
 
@@ -186,6 +233,14 @@ pub(crate) mod test_support {
     #[async_trait]
     impl PackRepository for NoopPackRepository {
         async fn list_available(
+            &self,
+            _pack_type: Option<String>,
+            _language: Option<String>,
+        ) -> Result<Vec<PackInfo>, StorageError> {
+            Ok(Vec::new())
+        }
+
+        async fn list_available_all_versions(
             &self,
             _pack_type: Option<String>,
             _language: Option<String>,
@@ -305,6 +360,66 @@ pub(crate) mod test_support {
     }
 
     #[derive(Clone, Default)]
+    pub struct NoopReleaseRepository;
+
+    #[async_trait]
+    impl ReleaseRepository for NoopReleaseRepository {
+        async fn create_draft_release(
+            &self,
+            _version: String,
+            _notes: Option<String>,
+            _created_by: String,
+        ) -> Result<iqrah_backend_domain::DatasetRelease, StorageError> {
+            Err(StorageError::Unexpected(
+                "NoopReleaseRepository::create_draft_release".to_string(),
+            ))
+        }
+
+        async fn attach_artifact(
+            &self,
+            _release_id: iqrah_backend_domain::ReleaseId,
+            _package_id: String,
+            _artifact_role: iqrah_backend_domain::ArtifactRole,
+            _required: bool,
+        ) -> Result<iqrah_backend_domain::DatasetReleaseArtifact, StorageError> {
+            Err(StorageError::Unexpected(
+                "NoopReleaseRepository::attach_artifact".to_string(),
+            ))
+        }
+
+        async fn validate_release(
+            &self,
+            _release_id: iqrah_backend_domain::ReleaseId,
+        ) -> Result<iqrah_backend_domain::ReleaseValidationReport, StorageError> {
+            Err(StorageError::Unexpected(
+                "NoopReleaseRepository::validate_release".to_string(),
+            ))
+        }
+
+        async fn publish_release(
+            &self,
+            _release_id: iqrah_backend_domain::ReleaseId,
+        ) -> Result<iqrah_backend_domain::DatasetRelease, StorageError> {
+            Err(StorageError::Unexpected(
+                "NoopReleaseRepository::publish_release".to_string(),
+            ))
+        }
+
+        async fn get_latest_release(
+            &self,
+        ) -> Result<Option<iqrah_backend_domain::DatasetRelease>, StorageError> {
+            Ok(None)
+        }
+
+        async fn get_release_manifest(
+            &self,
+            _release_id: iqrah_backend_domain::ReleaseId,
+        ) -> Result<Option<ReleaseManifestRecord>, StorageError> {
+            Ok(None)
+        }
+    }
+
+    #[derive(Clone, Default)]
     pub struct NoopJwtVerifier;
 
     #[async_trait]
@@ -348,11 +463,32 @@ pub(crate) mod test_support {
         pack_asset_store: Arc<dyn PackAssetStore>,
         config: AppConfig,
     ) -> Arc<AppState> {
+        build_state_with_release_repo(
+            pack_repo,
+            auth_repo,
+            sync_repo,
+            Arc::new(NoopReleaseRepository),
+            jwt_verifier,
+            pack_asset_store,
+            config,
+        )
+    }
+
+    pub fn build_state_with_release_repo(
+        pack_repo: Arc<dyn PackRepository>,
+        auth_repo: Arc<dyn AuthRepository>,
+        sync_repo: Arc<dyn SyncRepository>,
+        release_repo: Arc<dyn ReleaseRepository>,
+        jwt_verifier: Arc<dyn JwtVerifier>,
+        pack_asset_store: Arc<dyn PackAssetStore>,
+        config: AppConfig,
+    ) -> Arc<AppState> {
         Arc::new(AppState {
             pool: unreachable_pool(),
             pack_repo,
             auth_repo,
             sync_repo,
+            release_repo,
             jwt_verifier,
             pack_asset_store,
             pack_cache: PackVerificationCache::new(),
@@ -379,7 +515,7 @@ mod tests {
 
     use async_trait::async_trait;
     use axum::body::to_bytes;
-    use axum::http::{Request, StatusCode};
+    use axum::http::{Request, StatusCode, header};
     use iqrah_backend_storage::{PackInfo, PackRepository, StorageError};
     use tower::ServiceExt;
 
@@ -398,6 +534,14 @@ mod tests {
     #[async_trait]
     impl PackRepository for RecordingPackRepository {
         async fn list_available(
+            &self,
+            _pack_type: Option<String>,
+            _language: Option<String>,
+        ) -> Result<Vec<PackInfo>, StorageError> {
+            Ok(Vec::new())
+        }
+
+        async fn list_available_all_versions(
             &self,
             _pack_type: Option<String>,
             _language: Option<String>,
@@ -552,5 +696,52 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).expect("body should be json");
         assert_eq!(json["status"], "degraded");
         assert_eq!(json["database"], "disconnected");
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_requires_admin_credentials() {
+        let app = build_router(build_default_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/metrics")
+                    .body(axum::body::Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("metrics request should run");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_returns_prometheus_payload_with_admin_key() {
+        let app = build_router(build_default_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/metrics")
+                    .header("x-admin-key", "admin-secret")
+                    .body(axum::body::Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("metrics request should run");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/plain; version=0.0.4; charset=utf-8")
+        );
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body should be readable");
+        let body = String::from_utf8(body.to_vec()).expect("metrics body should be utf-8");
+        assert!(body.contains("iqrah_uptime_seconds"));
+        assert!(body.contains("iqrah_db_connected"));
     }
 }
