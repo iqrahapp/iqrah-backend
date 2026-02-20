@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO devices (id, user_id, os, device_model, app_version, last_seen_at)\n            VALUES ($1, $2, $3, $4, $5, now())\n            ON CONFLICT (id) DO UPDATE SET\n                os = COALESCE(EXCLUDED.os, devices.os),\n                device_model = COALESCE(EXCLUDED.device_model, devices.device_model),\n                app_version = COALESCE(EXCLUDED.app_version, devices.app_version),\n                last_seen_at = now()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e3fed9a784c6558c86851a28e13aa66ea5bc96e269ce23ee700c10b77914c42e"
+}

@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO users (id, oauth_sub, last_seen_at)\n            VALUES ($1, $2, now())\n            ON CONFLICT (oauth_sub) DO UPDATE SET last_seen_at = now()\n            RETURNING id, oauth_sub, created_at, last_seen_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "oauth_sub",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "last_seen_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f0bf61ba240743989bf5f79de8ff193d2d560fbcbf657b8c22b2aa7e9f28a491"
+}

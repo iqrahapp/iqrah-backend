@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                p.package_id AS id,\n                COALESCE(p.name, p.package_id) AS \"name!\",\n                p.description,\n                p.pack_type,\n                pv.version,\n                pv.sha256,\n                pv.size_bytes AS file_size_bytes,\n                pv.published_at AS created_at\n            FROM packs p\n            JOIN pack_versions pv ON p.package_id = pv.package_id\n            WHERE p.status = 'published' AND pv.is_active = true\n            ORDER BY p.package_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "pack_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "sha256",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "file_size_bytes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "941028d56ee4b3e36bf6baf8e6c1664677424b0b809e4ca3cac5609c0a0d93e9"
+}

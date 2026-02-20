@@ -1,0 +1,13 @@
+[package]
+name = "iqrah-backend-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+dotenvy = { workspace = true }
+thiserror = { workspace = true }
+secrecy = { workspace = true }
+
+[dev-dependencies]
+mockall = "0.13"

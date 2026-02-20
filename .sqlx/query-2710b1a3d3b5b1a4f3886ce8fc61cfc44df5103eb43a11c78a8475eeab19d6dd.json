@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO conflict_logs (user_id, entity_type, entity_key, incoming_metadata, winning_metadata, resolved_at)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2710b1a3d3b5b1a4f3886ce8fc61cfc44df5103eb43a11c78a8475eeab19d6dd"
+}

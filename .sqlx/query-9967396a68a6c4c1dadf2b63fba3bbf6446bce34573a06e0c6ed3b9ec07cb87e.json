@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT id, session_id, node_id, exercise_type, grade, duration_ms, updated_at\n                FROM session_items\n                WHERE user_id = $1 AND updated_at > $2\n                ORDER BY updated_at, id\n                LIMIT $3\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "node_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "exercise_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "grade",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "duration_ms",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "9967396a68a6c4c1dadf2b63fba3bbf6446bce34573a06e0c6ed3b9ec07cb87e"
+}

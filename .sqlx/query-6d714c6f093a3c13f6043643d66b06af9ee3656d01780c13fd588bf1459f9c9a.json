@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT node_id, energy, fsrs_stability, fsrs_difficulty, last_reviewed_at, next_review_at, updated_at\n                FROM memory_states\n                WHERE user_id = $1 AND updated_at > $2\n                ORDER BY updated_at, node_id\n                LIMIT $3\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "node_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "energy",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 2,
+        "name": "fsrs_stability",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 3,
+        "name": "fsrs_difficulty",
+        "type_info": "Float4"
+      },
+      {
+        "ordinal": 4,
+        "name": "last_reviewed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "next_review_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "6d714c6f093a3c13f6043643d66b06af9ee3656d01780c13fd588bf1459f9c9a"
+}

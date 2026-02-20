@@ -1,0 +1,24 @@
+target/
+
+# Environment / local config
+.env
+.env.local
+.env.*.local
+
+# Rust tooling
+**/*.rs.bk
+
+# Coverage / profiling artifacts
+coverage/
+*.profraw
+*.profdata
+lcov.info
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS artifacts
+.DS_Store

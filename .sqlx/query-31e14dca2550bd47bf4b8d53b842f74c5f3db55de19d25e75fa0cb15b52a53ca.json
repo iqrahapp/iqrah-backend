@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE packs SET status = 'published' WHERE package_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "31e14dca2550bd47bf4b8d53b842f74c5f3db55de19d25e75fa0cb15b52a53ca"
+}

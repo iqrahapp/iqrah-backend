@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pack_versions SET is_active = false WHERE package_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5c2feaea65d8d5b95bff194063d678b4cc75a7f5cbf630bde303d3c5206ba9cd"
+}

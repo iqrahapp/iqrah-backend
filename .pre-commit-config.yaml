@@ -1,0 +1,28 @@
+repos:
+  - repo: local
+    hooks:
+      - id: rust-fmt-check
+        name: cargo fmt check
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+
+      - id: rust-clippy
+        name: cargo clippy
+        entry: bash -lc 'SQLX_OFFLINE=true cargo clippy --workspace --all-targets --locked -- -D warnings'
+        language: system
+        pass_filenames: false
+
+      - id: rust-test
+        name: cargo test
+        entry: bash -lc 'SQLX_OFFLINE=true cargo test --workspace --locked'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-deny
+        name: cargo deny check
+        entry: cargo deny check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
