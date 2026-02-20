@@ -14,38 +14,68 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::middleware::auth::AdminApiKey;
 use iqrah_backend_domain::{
-    DomainError, PackId, PackManifestEntry, PackManifestResponse, PackType,
+    ApiError, DomainError, PackId, PackManifestEntry, PackManifestResponse, PackType,
 };
 
 /// Request to register a new pack.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct RegisterPackRequest {
+    #[schema(example = "English Translation")]
     pub name: String,
+    #[schema(example = "English translation pack for mobile clients")]
     pub description: String,
+    #[schema(example = "translation")]
     pub pack_type: PackType,
 }
 
 /// Response for pack registration.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct RegisterPackResponse {
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: String,
 }
 
-/// Response for adding a pack version.
-#[derive(Debug, Serialize)]
-pub struct AddVersionResponse {
+/// Multipart payload for adding a pack version.
+#[derive(Debug, utoipa::ToSchema)]
+pub struct AddVersionMultipartBody {
+    #[schema(example = "1.0.0")]
     pub version: String,
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
+}
+
+/// Response for adding a pack version.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AddVersionResponse {
+    #[schema(example = "1.0.0")]
+    pub version: String,
+    #[schema(example = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")]
     pub sha256: String,
+    #[schema(example = 1024)]
     pub file_size_bytes: u64,
 }
 
 /// Response for publishing a pack.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct PublishPackResponse {
     pub published: bool,
 }
 
 /// Registers a new pack.
+#[utoipa::path(
+    post,
+    path = "/v1/admin/packs",
+    tag = "admin",
+    request_body = RegisterPackRequest,
+    responses(
+        (status = 201, description = "Pack registered", body = RegisterPackResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
 pub async fn register_pack(
     State(state): State<Arc<AppState>>,
     _admin: AdminApiKey,
@@ -76,6 +106,26 @@ pub async fn register_pack(
 }
 
 /// Uploads a new version file for an existing pack.
+#[utoipa::path(
+    post,
+    path = "/v1/admin/packs/{id}/versions",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "Pack ID")
+    ),
+    request_body(
+        content = AddVersionMultipartBody,
+        content_type = "multipart/form-data"
+    ),
+    responses(
+        (status = 201, description = "Version uploaded", body = AddVersionResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
 pub async fn add_version(
     State(state): State<Arc<AppState>>,
     _admin: AdminApiKey,
@@ -186,6 +236,21 @@ pub async fn add_version(
 }
 
 /// Publishes an existing pack.
+#[utoipa::path(
+    post,
+    path = "/v1/admin/packs/{id}/publish",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "Pack ID")
+    ),
+    responses(
+        (status = 200, description = "Pack published", body = PublishPackResponse),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
 pub async fn publish_pack(
     State(state): State<Arc<AppState>>,
     _admin: AdminApiKey,
@@ -201,6 +266,18 @@ pub async fn publish_pack(
 }
 
 /// Lists all packs and their latest versions for admin tooling.
+#[utoipa::path(
+    get,
+    path = "/v1/admin/packs",
+    tag = "admin",
+    responses(
+        (status = 200, description = "All packs", body = PackManifestResponse),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
 pub async fn list_all_packs(
     State(state): State<Arc<AppState>>,
     _admin: AdminApiKey,

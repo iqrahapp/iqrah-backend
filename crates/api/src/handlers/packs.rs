@@ -10,12 +10,13 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 
-use iqrah_backend_domain::{DomainError, PackId, PackManifestEntry, PackManifestResponse};
+use iqrah_backend_domain::{
+    ApiError, DomainError, PackId, PackManifestEntry, PackManifestResponse,
+};
 use iqrah_backend_storage::PackInfo;
 
 use crate::AppState;
@@ -29,25 +30,35 @@ enum RangeParseError {
 }
 
 /// Query parameters for pack listing.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ListPacksQuery {
     #[serde(rename = "type")]
+    #[schema(example = "translation")]
     pub pack_type: Option<String>,
+    #[schema(example = "en")]
     pub language: Option<String>,
 }
 
 /// Pack info response DTO.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct PackDto {
+    #[schema(example = "translation.en")]
     pub package_id: String,
+    #[schema(example = "translation")]
     pub package_type: String,
+    #[schema(example = "1.0.0")]
     pub version: String,
+    #[schema(example = "en")]
     pub language_code: String,
+    #[schema(example = "English Translation")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[schema(example = 1_024_i64)]
     pub size_bytes: i64,
+    #[schema(example = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")]
     pub sha256: String,
+    #[schema(example = "https://api.example.com/v1/packs/translation.en/download")]
     pub download_url: String,
 }
 
@@ -68,12 +79,25 @@ impl PackDto {
 }
 
 /// List packs response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ListPacksResponse {
     pub packs: Vec<PackDto>,
 }
 
 /// Lists available published packs.
+#[utoipa::path(
+    get,
+    path = "/v1/packs/available",
+    tag = "packs",
+    params(
+        ("type" = Option<String>, Query, description = "Filter by pack type"),
+        ("language" = Option<String>, Query, description = "Filter by language code")
+    ),
+    responses(
+        (status = 200, description = "Available packs", body = ListPacksResponse),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
 pub async fn list_packs(
     State(state): State<Arc<AppState>>,
     AxumQuery(query): AxumQuery<ListPacksQuery>,
@@ -94,6 +118,15 @@ pub async fn list_packs(
 }
 
 /// Gets manifest for all published active packs.
+#[utoipa::path(
+    get,
+    path = "/v1/packs/manifest",
+    tag = "packs",
+    responses(
+        (status = 200, description = "Global pack manifest", body = PackManifestResponse),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
 pub async fn get_global_manifest(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<PackManifestResponse>, DomainError> {
@@ -125,6 +158,21 @@ pub async fn get_global_manifest(
 }
 
 /// Streams a pack file with range support.
+#[utoipa::path(
+    get,
+    path = "/v1/packs/{id}/download",
+    tag = "packs",
+    params(
+        ("id" = String, Path, description = "Pack ID")
+    ),
+    responses(
+        (status = 200, description = "Full pack file", content_type = "application/octet-stream"),
+        (status = 206, description = "Partial content", content_type = "application/octet-stream"),
+        (status = 404, description = "Pack not found", body = ApiError),
+        (status = 416, description = "Unsatisfiable range", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
 pub async fn download_pack(
     State(state): State<Arc<AppState>>,
     Path(package_id): Path<String>,
@@ -193,7 +241,10 @@ async fn verify_pack_integrity(
         .map_err(|error| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": error.to_string()})),
+                Json(ApiError {
+                    error: error.to_string(),
+                    details: None,
+                }),
             )
                 .into_response()
         })?;
@@ -209,7 +260,10 @@ async fn verify_pack_integrity(
 
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Pack integrity check failed"})),
+            Json(ApiError {
+                error: "Pack integrity check failed".to_string(),
+                details: None,
+            }),
         )
             .into_response());
     }
@@ -260,7 +314,18 @@ async fn build_download_response(
                 .header(header::CONTENT_RANGE, format!("bytes */{file_size}"))
                 .header(header::ACCEPT_RANGES, "bytes")
                 .header("X-Pack-SHA256", sha256)
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&ApiError {
+                        error: "Unsatisfiable range".to_string(),
+                        details: None,
+                    })
+                    .map_err(|e| {
+                        DomainError::Internal(anyhow::anyhow!(
+                            "Failed to serialize range error response: {e}"
+                        ))
+                    })?,
+                ))
                 .map_err(|e| {
                     DomainError::Internal(anyhow::anyhow!("Failed to build 416 response: {e}"))
                 })?;
@@ -382,6 +447,19 @@ fn parse_range_header(
 }
 
 /// Gets pack metadata without downloading the file.
+#[utoipa::path(
+    get,
+    path = "/v1/packs/{id}/manifest",
+    tag = "packs",
+    params(
+        ("id" = String, Path, description = "Pack ID")
+    ),
+    responses(
+        (status = 200, description = "Pack manifest entry", body = PackDto),
+        (status = 404, description = "Pack not found", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
 pub async fn get_manifest(
     State(state): State<Arc<AppState>>,
     Path(package_id): Path<String>,
@@ -623,7 +701,9 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
-        assert!(body.is_empty());
+        let error: ApiError = serde_json::from_slice(&body).expect("416 body should be api error");
+        assert_eq!(error.error, "Unsatisfiable range");
+        assert!(error.details.is_none());
     }
 
     mockall::mock! {

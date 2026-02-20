@@ -59,3 +59,18 @@ ci:
 
 run:
     cargo run -p iqrah-backend-api --bin iqrah-server
+
+# Generate OpenAPI spec - always commit the result
+spec:
+    cargo run -p iqrah-backend-api --bin generate_spec > openapi.json
+    @echo "openapi.json updated - commit this file"
+
+# Used by CI to ensure spec is never stale
+spec-check:
+    cargo run -p iqrah-backend-api --bin generate_spec > /tmp/openapi_fresh.json
+    diff openapi.json /tmp/openapi_fresh.json || \
+      (echo "ERROR: openapi.json is stale - run 'just spec' and commit" && exit 1)
+
+# Open Swagger UI locally (dev only)
+swagger:
+    cargo run -p iqrah-backend-api --bin iqrah-server --features swagger-ui

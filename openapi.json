@@ -1,0 +1,1764 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Iqrah Backend API",
+    "description": "REST API for the Iqrah mobile app",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/admin/packs": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lists all packs and their latest versions for admin tooling.",
+        "operationId": "list_all_packs",
+        "responses": {
+          "200": {
+            "description": "All packs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackManifestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Registers a new pack.",
+        "operationId": "register_pack",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Pack registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterPackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/packs/{id}/publish": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Publishes an existing pack.",
+        "operationId": "publish_pack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Pack ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pack published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishPackResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/packs/{id}/versions": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Uploads a new version file for an existing pack.",
+        "operationId": "add_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Pack ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/AddVersionMultipartBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Version uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddVersionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/sync/conflicts/{user_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin-only conflict inspection endpoint.",
+        "operationId": "admin_recent_conflicts",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max conflicts to return (1..=200)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent conflict list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConflictListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          }
+        ]
+      }
+    },
+    "/v1/auth/google": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Google OAuth login handler.",
+        "operationId": "google_auth",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packs/available": {
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "summary": "Lists available published packs.",
+        "operationId": "list_packs",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter by pack type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "description": "Filter by language code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available packs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPacksResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packs/manifest": {
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "summary": "Gets manifest for all published active packs.",
+        "operationId": "get_global_manifest",
+        "responses": {
+          "200": {
+            "description": "Global pack manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackManifestResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packs/{id}/download": {
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "summary": "Streams a pack file with range support.",
+        "operationId": "download_pack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Pack ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full pack file",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "206": {
+            "description": "Partial content",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "404": {
+            "description": "Pack not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Unsatisfiable range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packs/{id}/manifest": {
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "summary": "Gets pack metadata without downloading the file.",
+        "operationId": "get_manifest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Pack ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pack manifest entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pack not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sync/pull": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Pulls server-side changes since a cursor or initial timestamp.",
+        "operationId": "sync_pull",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncPullRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Pull result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncPullResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/sync/push": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Pushes local device changes to the server.",
+        "operationId": "sync_push",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncPushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Push result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncPushResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Returns current user profile from JWT context.",
+        "operationId": "get_me",
+        "responses": {
+          "200": {
+            "description": "Current user profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddVersionMultipartBody": {
+        "type": "object",
+        "description": "Multipart payload for adding a pack version.",
+        "required": [
+          "version",
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          }
+        }
+      },
+      "AddVersionResponse": {
+        "type": "object",
+        "description": "Response for adding a pack version.",
+        "required": [
+          "version",
+          "sha256",
+          "file_size_bytes"
+        ],
+        "properties": {
+          "file_size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1024,
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "example": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          }
+        }
+      },
+      "AdminConflictListResponse": {
+        "type": "object",
+        "description": "Admin conflict inspection response.",
+        "required": [
+          "conflicts"
+        ],
+        "properties": {
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminConflictRecord"
+            }
+          }
+        }
+      },
+      "AdminConflictRecord": {
+        "type": "object",
+        "description": "Admin conflict log record.",
+        "required": [
+          "id",
+          "user_id",
+          "entity_type",
+          "entity_key",
+          "incoming_metadata",
+          "winning_metadata",
+          "resolved_at"
+        ],
+        "properties": {
+          "entity_key": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "incoming_metadata": {},
+          "resolved_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/UserId"
+          },
+          "winning_metadata": {}
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "description": "API error response format",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "details": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "example": "[\"name: validation failed\"]"
+          },
+          "error": {
+            "type": "string",
+            "example": "Validation error: field is required"
+          }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "description": "Auth response with access token.",
+        "required": [
+          "access_token",
+          "user_id",
+          "expires_in"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "example": 3600,
+            "minimum": 0
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/UserId"
+          }
+        }
+      },
+      "DeviceId": {
+        "type": "string",
+        "description": "Stable device identifier.",
+        "example": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      },
+      "GoalId": {
+        "type": "string",
+        "description": "Stable goal identifier.",
+        "example": "daily_goals"
+      },
+      "GoogleAuthRequest": {
+        "type": "object",
+        "description": "Google OAuth login request.",
+        "required": [
+          "id_token"
+        ],
+        "properties": {
+          "id_token": {
+            "type": "string",
+            "example": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9..."
+          }
+        }
+      },
+      "ListPacksResponse": {
+        "type": "object",
+        "description": "List packs response.",
+        "required": [
+          "packs"
+        ],
+        "properties": {
+          "packs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackDto"
+            }
+          }
+        }
+      },
+      "MemoryStateChange": {
+        "type": "object",
+        "description": "Memory state change.",
+        "required": [
+          "node_id",
+          "energy",
+          "client_updated_at"
+        ],
+        "properties": {
+          "client_updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "energy": {
+            "type": "number",
+            "format": "float"
+          },
+          "fsrs_difficulty": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "fsrs_stability": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "last_reviewed_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              }
+            ]
+          },
+          "next_review_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              }
+            ]
+          },
+          "node_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Pack": {
+        "type": "object",
+        "description": "Content pack entity.",
+        "required": [
+          "package_id",
+          "pack_type",
+          "version",
+          "language",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-02-20T16:00:00Z"
+          },
+          "file_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": "string"
+          },
+          "pack_type": {
+            "$ref": "#/components/schemas/PackType"
+          },
+          "package_id": {
+            "$ref": "#/components/schemas/PackId"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/PackStatus"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "PackDto": {
+        "type": "object",
+        "description": "Pack info response DTO.",
+        "required": [
+          "package_id",
+          "package_type",
+          "version",
+          "language_code",
+          "name",
+          "size_bytes",
+          "sha256",
+          "download_url"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "download_url": {
+            "type": "string",
+            "example": "https://api.example.com/v1/packs/translation.en/download"
+          },
+          "language_code": {
+            "type": "string",
+            "example": "en"
+          },
+          "name": {
+            "type": "string",
+            "example": "English Translation"
+          },
+          "package_id": {
+            "type": "string",
+            "example": "translation.en"
+          },
+          "package_type": {
+            "type": "string",
+            "example": "translation"
+          },
+          "sha256": {
+            "type": "string",
+            "example": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1024
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          }
+        }
+      },
+      "PackId": {
+        "type": "string",
+        "description": "Stable pack identifier.",
+        "example": "translation.en"
+      },
+      "PackManifestEntry": {
+        "type": "object",
+        "description": "Global manifest entry for a published active pack.",
+        "required": [
+          "id",
+          "name",
+          "pack_type",
+          "version",
+          "sha256",
+          "file_size_bytes",
+          "created_at",
+          "download_url"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-02-20T16:00:00Z"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "download_url": {
+            "type": "string"
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PackId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pack_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "PackManifestResponse": {
+        "type": "object",
+        "description": "Global pack manifest response.",
+        "required": [
+          "packs"
+        ],
+        "properties": {
+          "packs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackManifestEntry"
+            }
+          }
+        }
+      },
+      "PackStatus": {
+        "type": "string",
+        "description": "Pack status.",
+        "enum": [
+          "draft",
+          "published",
+          "deprecated"
+        ],
+        "example": "published"
+      },
+      "PackType": {
+        "type": "string",
+        "description": "Pack type (translation, recitation, etc.)",
+        "enum": [
+          "translation",
+          "recitation",
+          "tafsir"
+        ],
+        "example": "translation"
+      },
+      "PublishPackResponse": {
+        "type": "object",
+        "description": "Response for publishing a pack.",
+        "required": [
+          "published"
+        ],
+        "properties": {
+          "published": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RegisterPackRequest": {
+        "type": "object",
+        "description": "Request to register a new pack.",
+        "required": [
+          "name",
+          "description",
+          "pack_type"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "example": "English translation pack for mobile clients"
+          },
+          "name": {
+            "type": "string",
+            "example": "English Translation"
+          },
+          "pack_type": {
+            "$ref": "#/components/schemas/PackType"
+          }
+        }
+      },
+      "RegisterPackResponse": {
+        "type": "object",
+        "description": "Response for pack registration.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          }
+        }
+      },
+      "SessionChange": {
+        "type": "object",
+        "description": "Session change.",
+        "required": [
+          "id",
+          "started_at",
+          "items_completed",
+          "client_updated_at"
+        ],
+        "properties": {
+          "client_updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "completed_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              }
+            ]
+          },
+          "goal_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GoalId"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "items_completed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "started_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        }
+      },
+      "SessionItemChange": {
+        "type": "object",
+        "description": "Session item change.",
+        "required": [
+          "id",
+          "session_id",
+          "node_id",
+          "exercise_type",
+          "client_updated_at"
+        ],
+        "properties": {
+          "client_updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "exercise_type": {
+            "type": "string"
+          },
+          "grade": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+          },
+          "node_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          }
+        }
+      },
+      "SettingChange": {
+        "type": "object",
+        "description": "Setting change.",
+        "required": [
+          "key",
+          "value",
+          "client_updated_at"
+        ],
+        "properties": {
+          "client_updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {}
+        }
+      },
+      "SyncChanges": {
+        "type": "object",
+        "description": "Collection of sync changes.",
+        "properties": {
+          "memory_states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryStateChange"
+            }
+          },
+          "session_items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionItemChange"
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionChange"
+            }
+          },
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingChange"
+            }
+          }
+        }
+      },
+      "SyncCursorMemoryState": {
+        "type": "object",
+        "required": [
+          "updated_at",
+          "node_id"
+        ],
+        "properties": {
+          "node_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        }
+      },
+      "SyncCursorSession": {
+        "type": "object",
+        "required": [
+          "updated_at",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        }
+      },
+      "SyncCursorSessionItem": {
+        "type": "object",
+        "required": [
+          "updated_at",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        }
+      },
+      "SyncCursorSetting": {
+        "type": "object",
+        "required": [
+          "updated_at",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        }
+      },
+      "SyncPullCursor": {
+        "type": "object",
+        "description": "Per-entity cursor for paginated sync pulls.",
+        "properties": {
+          "memory_states": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncCursorMemoryState"
+              }
+            ]
+          },
+          "session_items": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncCursorSessionItem"
+              }
+            ]
+          },
+          "sessions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncCursorSession"
+              }
+            ]
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncCursorSetting"
+              }
+            ]
+          }
+        }
+      },
+      "SyncPullRequest": {
+        "type": "object",
+        "description": "Sync pull request.",
+        "required": [
+          "device_id",
+          "since"
+        ],
+        "properties": {
+          "app_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "App version (e.g., \"1.2.3\"). Max 20 characters."
+          },
+          "cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncPullCursor",
+                "description": "Per-entity pagination cursor (optional)."
+              }
+            ]
+          },
+          "device_id": {
+            "$ref": "#/components/schemas/DeviceId"
+          },
+          "device_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Device model (e.g., \"Pixel 8 Pro\", \"iPhone 15\"). Max 100 characters."
+          },
+          "device_os": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Device OS (e.g., \"Android 14\", \"iOS 17.2\"). Max 50 characters."
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Max records per batch across all entity types combined (global cap).\n\nThe server merges changes from all categories and stops when the total\npayload reaches `limit`. Default: 1000, Maximum allowed: 10000.",
+            "minimum": 0
+          },
+          "since": {
+            "$ref": "#/components/schemas/TimestampMs",
+            "description": "Timestamp in milliseconds since epoch. Returns changes after this time."
+          }
+        }
+      },
+      "SyncPullResponse": {
+        "type": "object",
+        "description": "Sync pull response.",
+        "required": [
+          "server_time",
+          "changes",
+          "has_more"
+        ],
+        "properties": {
+          "changes": {
+            "$ref": "#/components/schemas/SyncChanges"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncPullCursor"
+              }
+            ]
+          },
+          "server_time": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        }
+      },
+      "SyncPushRequest": {
+        "type": "object",
+        "description": "Sync push request.",
+        "required": [
+          "device_id",
+          "changes"
+        ],
+        "properties": {
+          "app_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "App version (e.g., \"1.2.3\"). Max 20 characters."
+          },
+          "changes": {
+            "$ref": "#/components/schemas/SyncChanges"
+          },
+          "device_id": {
+            "$ref": "#/components/schemas/DeviceId"
+          },
+          "device_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Device model (e.g., \"Pixel 8 Pro\", \"iPhone 15\"). Max 100 characters."
+          },
+          "device_os": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Device OS (e.g., \"Android 14\", \"iOS 17.2\"). Max 50 characters."
+          }
+        }
+      },
+      "SyncPushResponse": {
+        "type": "object",
+        "description": "Sync push response.",
+        "required": [
+          "applied",
+          "skipped",
+          "server_time"
+        ],
+        "properties": {
+          "applied": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of changes accepted and written (LWW won).",
+            "minimum": 0
+          },
+          "server_time": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of changes silently rejected because the server had a newer version (LWW lost).",
+            "minimum": 0
+          }
+        }
+      },
+      "TimestampMs": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Millisecond unix timestamp.",
+        "example": 1706000000000
+      },
+      "UserId": {
+        "type": "string",
+        "description": "Stable user identifier.",
+        "example": "550e8400-e29b-41d4-a716-446655440000"
+      },
+      "UserProfile": {
+        "type": "object",
+        "description": "User profile response.",
+        "required": [
+          "id",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-02-20T16:00:00Z"
+          },
+          "id": {
+            "$ref": "#/components/schemas/UserId"
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "example": "2026-02-20T16:10:00Z"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "admin_api_key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-admin-key"
+      },
+      "bearer_auth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Authentication and device registration"
+    },
+    {
+      "name": "packs",
+      "description": "Content pack management"
+    },
+    {
+      "name": "sync",
+      "description": "Client data synchronisation"
+    },
+    {
+      "name": "admin",
+      "description": "Admin-only operations"
+    }
+  ]
+}

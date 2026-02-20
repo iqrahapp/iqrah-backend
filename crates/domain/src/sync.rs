@@ -7,7 +7,7 @@ use validator::Validate;
 use crate::{DeviceId, GoalId, TimestampMs, UserId};
 
 /// Sync push request.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, utoipa::ToSchema)]
 pub struct SyncPushRequest {
     pub device_id: DeviceId,
     #[validate(nested)]
@@ -24,10 +24,11 @@ pub struct SyncPushRequest {
 }
 
 /// Sync pull request.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, utoipa::ToSchema)]
 pub struct SyncPullRequest {
     pub device_id: DeviceId,
     /// Timestamp in milliseconds since epoch. Returns changes after this time.
+    #[schema(example = 1706000000000_i64)]
     pub since: TimestampMs,
     /// Max records per batch across all entity types combined (global cap).
     ///
@@ -56,7 +57,7 @@ fn default_limit() -> Option<usize> {
 }
 
 /// Per-entity cursor for paginated sync pulls.
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, utoipa::ToSchema)]
 pub struct SyncPullCursor {
     #[serde(default)]
     #[validate(nested)]
@@ -72,33 +73,39 @@ pub struct SyncPullCursor {
     pub session_items: Option<SyncCursorSessionItem>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, utoipa::ToSchema)]
 pub struct SyncCursorSetting {
+    #[schema(example = 1706000000000_i64)]
     pub updated_at: TimestampMs,
     #[validate(length(min = 1, max = 255))]
     pub key: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, utoipa::ToSchema)]
 pub struct SyncCursorMemoryState {
+    #[schema(example = 1706000000000_i64)]
     pub updated_at: TimestampMs,
     pub node_id: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, utoipa::ToSchema)]
 pub struct SyncCursorSession {
+    #[schema(example = 1706000000000_i64)]
     pub updated_at: TimestampMs,
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, utoipa::ToSchema)]
 pub struct SyncCursorSessionItem {
+    #[schema(example = 1706000000000_i64)]
     pub updated_at: TimestampMs,
+    #[schema(example = "f47ac10b-58cc-4372-a567-0e02b2c3d479")]
     pub id: Uuid,
 }
 
 /// Collection of sync changes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct SyncChanges {
     #[serde(default)]
     #[validate(nested)]
@@ -115,16 +122,17 @@ pub struct SyncChanges {
 }
 
 /// Setting change.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct SettingChange {
     #[validate(length(min = 1, max = 255))]
     pub key: String,
     pub value: serde_json::Value,
+    #[schema(example = 1706000000000_i64)]
     pub client_updated_at: TimestampMs,
 }
 
 /// Memory state change.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct MemoryStateChange {
     pub node_id: i64,
     #[validate(range(min = 0.0, max = 1.0))]
@@ -135,25 +143,31 @@ pub struct MemoryStateChange {
     pub fsrs_difficulty: Option<f32>,
     pub last_reviewed_at: Option<TimestampMs>,
     pub next_review_at: Option<TimestampMs>,
+    #[schema(example = 1706000000000_i64)]
     pub client_updated_at: TimestampMs,
 }
 
 /// Session change.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct SessionChange {
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
     pub goal_id: Option<GoalId>,
+    #[schema(example = 1706000000000_i64)]
     pub started_at: TimestampMs,
     pub completed_at: Option<TimestampMs>,
     #[validate(range(min = 0))]
     pub items_completed: i32,
+    #[schema(example = 1706000000000_i64)]
     pub client_updated_at: TimestampMs,
 }
 
 /// Session item change.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct SessionItemChange {
+    #[schema(example = "f47ac10b-58cc-4372-a567-0e02b2c3d479")]
     pub id: Uuid,
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub session_id: Uuid,
     pub node_id: i64,
     #[validate(length(min = 1, max = 100))]
@@ -162,11 +176,12 @@ pub struct SessionItemChange {
     pub grade: Option<i32>,
     #[validate(range(min = 0))]
     pub duration_ms: Option<i32>,
+    #[schema(example = 1706000000000_i64)]
     pub client_updated_at: TimestampMs,
 }
 
 /// Admin conflict log record.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AdminConflictRecord {
     pub id: i64,
     pub user_id: UserId,
@@ -174,28 +189,31 @@ pub struct AdminConflictRecord {
     pub entity_key: String,
     pub incoming_metadata: serde_json::Value,
     pub winning_metadata: serde_json::Value,
+    #[schema(example = 1706000000000_i64)]
     pub resolved_at: TimestampMs,
 }
 
 /// Admin conflict inspection response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AdminConflictListResponse {
     pub conflicts: Vec<AdminConflictRecord>,
 }
 
 /// Sync push response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SyncPushResponse {
     /// Number of changes accepted and written (LWW won).
     pub applied: u64,
     /// Number of changes silently rejected because the server had a newer version (LWW lost).
     pub skipped: u64,
+    #[schema(example = 1706000000000_i64)]
     pub server_time: TimestampMs,
 }
 
 /// Sync pull response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SyncPullResponse {
+    #[schema(example = 1706000000000_i64)]
     pub server_time: TimestampMs,
     pub changes: SyncChanges,
     pub has_more: bool, // true if there are more records available

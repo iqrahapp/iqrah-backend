@@ -7,13 +7,25 @@ use jsonwebtoken::{EncodingKey, Header, encode};
 use secrecy::ExposeSecret;
 
 use iqrah_backend_domain::{
-    AuthResponse, Claims, DomainError, GoogleAuthRequest, JwtSubject, UserProfile,
+    ApiError, AuthResponse, Claims, DomainError, GoogleAuthRequest, JwtSubject, UserProfile,
 };
 
 use crate::AppState;
 use crate::middleware::auth::AuthUser;
 
 /// Google OAuth login handler.
+#[utoipa::path(
+    post,
+    path = "/v1/auth/google",
+    tag = "auth",
+    request_body = GoogleAuthRequest,
+    responses(
+        (status = 200, description = "Authenticated", body = AuthResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    )
+)]
 pub async fn google_auth(
     State(state): State<Arc<AppState>>,
     Json(req): Json<GoogleAuthRequest>,
@@ -83,6 +95,18 @@ pub async fn google_auth(
 }
 
 /// Returns current user profile from JWT context.
+#[utoipa::path(
+    get,
+    path = "/v1/users/me",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Current user profile", body = UserProfile),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 404, description = "User not found", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn get_me(
     State(state): State<Arc<AppState>>,
     AuthUser(user_id): AuthUser,

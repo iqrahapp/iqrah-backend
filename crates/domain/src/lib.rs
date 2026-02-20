@@ -14,16 +14,18 @@ pub use newtypes::*;
 pub use sync::*;
 
 /// User entity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct User {
     pub id: UserId,
     pub oauth_sub: String,
+    #[schema(example = "2026-02-20T16:00:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
 /// Pack type (translation, recitation, etc.)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[schema(example = "translation")]
 pub enum PackType {
     Translation,
     Recitation,
@@ -31,8 +33,9 @@ pub enum PackType {
 }
 
 /// Pack status.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[schema(example = "published")]
 pub enum PackStatus {
     Draft,
     Published,
@@ -40,20 +43,22 @@ pub enum PackStatus {
 }
 
 /// Content pack entity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Pack {
     pub package_id: PackId,
+    #[schema(example = "translation")]
     pub pack_type: PackType,
     pub version: String,
     pub language: String,
     pub status: PackStatus,
     pub file_path: Option<String>,
     pub sha256: Option<String>,
+    #[schema(example = "2026-02-20T16:00:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
 /// Global manifest entry for a published active pack.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PackManifestEntry {
     pub id: PackId,
     pub name: String,
@@ -62,17 +67,18 @@ pub struct PackManifestEntry {
     pub version: String,
     pub sha256: String,
     pub file_size_bytes: i64,
+    #[schema(example = "2026-02-20T16:00:00Z")]
     pub created_at: DateTime<Utc>,
     pub download_url: String,
 }
 
 /// Global pack manifest response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PackManifestResponse {
     pub packs: Vec<PackManifestEntry>,
 }
 /// Health check response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
@@ -81,7 +87,7 @@ pub struct HealthResponse {
 }
 
 /// Ready check response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ReadyResponse {
     pub status: String,
     pub database: String,

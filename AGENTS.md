@@ -152,3 +152,37 @@ just coverage-ci           # same as CI gate, fails under 85%
 3. Business logic embedded directly in DB access layer SQL blocks.
 4. Direct `std::env::var` reads outside `iqrah-backend-config`.
 5. Adding `kameo` actors without satisfying the two actor criteria above.
+
+## API Contract
+
+### Source of Truth
+The `openapi.json` file at repo root is **auto-generated** from utoipa
+annotations on Axum handlers. It is the single source of truth for the
+entire REST API surface.
+
+**Never edit `openapi.json` manually.**
+
+### After Any Handler Change
+1. Add or update the `#[utoipa::path(...)]` annotation on the handler
+2. Add `#[derive(utoipa::ToSchema)]` to any new request/response types
+3. Register new paths and schemas in `crates/api/src/openapi.rs`
+4. Run `just spec` and commit the updated `openapi.json`
+5. CI `spec-check` job will fail if you forget step 4
+
+### Breaking vs Non-Breaking Changes
+- Adding a new optional field: non-breaking - safe to ship
+- Removing a field: breaking - coordinate with iqrah-mobile team first
+- Renaming a field: breaking - use `#[serde(rename = "...")]` to keep
+  wire name stable while renaming the Rust field
+- Changing a field type: breaking - version the endpoint instead
+
+### Swagger UI (local dev only)
+Run `just swagger` to open the interactive Swagger UI at
+`http://localhost:8080/swagger-ui`. Never enable in production builds.
+
+### Anti-Patterns
+- Do NOT return ad-hoc `serde_json::json!({...})` error bodies -
+  always use the typed `ApiError` struct
+- Do NOT add a handler without a `#[utoipa::path]` annotation -
+  undocumented endpoints don't exist as far as the mobile client is concerned
+- Do NOT merge a PR that makes `just spec-check` fail

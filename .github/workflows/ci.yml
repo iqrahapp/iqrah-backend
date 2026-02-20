@@ -45,6 +45,26 @@ jobs:
           cargo build --workspace --locked
           cargo nextest run --workspace --locked
 
+  spec-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install just
+        run: cargo install just --locked
+
+      - name: Check openapi.json is not stale
+        env:
+          SQLX_OFFLINE: "true"
+        run: just spec-check
+
   coverage:
     needs: rust
     runs-on: ubuntu-latest

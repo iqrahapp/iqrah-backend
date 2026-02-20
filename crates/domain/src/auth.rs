@@ -6,33 +6,40 @@ use serde::{Deserialize, Serialize};
 use crate::{JwtSubject, UserId};
 
 /// Google OAuth login request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct GoogleAuthRequest {
+    #[schema(example = "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9...")]
     pub id_token: String,
 }
 
 /// Auth response with access token.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AuthResponse {
+    #[schema(example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")]
     pub access_token: String,
     pub user_id: UserId,
+    #[schema(example = 3600)]
     pub expires_in: u64,
 }
 
 /// User profile response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct UserProfile {
     pub id: UserId,
+    #[schema(example = "2026-02-20T16:00:00Z")]
     pub created_at: DateTime<Utc>,
+    #[schema(example = "2026-02-20T16:10:00Z")]
     pub last_seen_at: Option<DateTime<Utc>>,
 }
 
 /// JWT claims.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Claims {
     pub sub: JwtSubject, // user_id
-    pub exp: u64,        // expiration timestamp
-    pub iat: u64,        // issued at
+    #[schema(example = 1_900_000_000_u64)]
+    pub exp: u64, // expiration timestamp
+    #[schema(example = 1_899_996_400_u64)]
+    pub iat: u64, // issued at
 }
 
 #[cfg(test)]

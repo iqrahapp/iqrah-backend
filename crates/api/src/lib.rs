@@ -5,6 +5,7 @@ pub mod auth;
 pub mod cache;
 pub mod handlers;
 pub mod middleware;
+pub mod openapi;
 pub mod routes;
 
 use std::sync::Arc;
@@ -79,7 +80,7 @@ impl AppState {
 
 /// Builds the complete Axum router.
 pub fn build_router(state: Arc<AppState>) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/v1/health", get(health))
         .route("/v1/ready", get(ready))
         .merge(routes::auth::router(state.clone()))
@@ -90,7 +91,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
-        .with_state(state)
+        .with_state(state);
+
+    #[cfg(feature = "swagger-ui")]
+    let router = {
+        use crate::openapi::ApiDoc;
+        use utoipa::OpenApi;
+
+        router.merge(
+            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", ApiDoc::openapi()),
+        )
+    };
+
+    router
 }
 
 /// Health check endpoint.

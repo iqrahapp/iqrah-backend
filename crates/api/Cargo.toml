@@ -7,6 +7,10 @@ edition.workspace = true
 name = "iqrah-server"
 path = "src/main.rs"
 
+[[bin]]
+name = "generate_spec"
+path = "src/bin/generate_spec.rs"
+
 [dependencies]
 axum = { workspace = true, features = ["multipart"] }
 tokio = { workspace = true }
@@ -29,6 +33,9 @@ dashmap = "6"
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 secrecy = { workspace = true }
+utoipa = { version = "5.4", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-axum = "0.2.0"
+utoipa-swagger-ui = { version = "9", features = ["axum"], optional = true }
 
 iqrah-backend-config = { path = "../config" }
 iqrah-backend-domain = { path = "../domain" }
@@ -43,3 +50,4 @@ fake = { workspace = true }
 
 [features]
 postgres-tests = []
+swagger-ui = ["dep:utoipa-swagger-ui"]

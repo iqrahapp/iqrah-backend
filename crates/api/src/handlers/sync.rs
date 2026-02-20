@@ -12,11 +12,24 @@ use validator::Validate;
 use crate::AppState;
 use crate::middleware::auth::{AdminApiKey, AuthUser};
 use iqrah_backend_domain::{
-    AdminConflictListResponse, AdminConflictRecord, DomainError, SyncPullRequest, SyncPullResponse,
-    SyncPushRequest, SyncPushResponse, TimestampMs, UserId,
+    AdminConflictListResponse, AdminConflictRecord, ApiError, DomainError, SyncPullRequest,
+    SyncPullResponse, SyncPushRequest, SyncPushResponse, TimestampMs, UserId,
 };
 
 /// Pushes local device changes to the server.
+#[utoipa::path(
+    post,
+    path = "/v1/sync/push",
+    tag = "sync",
+    request_body = SyncPushRequest,
+    responses(
+        (status = 200, description = "Push result", body = SyncPushResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn sync_push(
     State(state): State<Arc<AppState>>,
     AuthUser(user_id): AuthUser,
@@ -54,6 +67,19 @@ pub async fn sync_push(
 }
 
 /// Pulls server-side changes since a cursor or initial timestamp.
+#[utoipa::path(
+    post,
+    path = "/v1/sync/pull",
+    tag = "sync",
+    request_body = SyncPullRequest,
+    responses(
+        (status = 200, description = "Pull result", body = SyncPullResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn sync_pull(
     State(state): State<Arc<AppState>>,
     AuthUser(user_id): AuthUser,
@@ -93,12 +119,29 @@ pub async fn sync_pull(
     }))
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct ConflictQuery {
+    #[schema(example = 50)]
     pub limit: Option<usize>,
 }
 
 /// Admin-only conflict inspection endpoint.
+#[utoipa::path(
+    get,
+    path = "/v1/admin/sync/conflicts/{user_id}",
+    tag = "admin",
+    params(
+        ("user_id" = String, Path, description = "User ID"),
+        ("limit" = Option<usize>, Query, description = "Max conflicts to return (1..=200)")
+    ),
+    responses(
+        (status = 200, description = "Recent conflict list", body = AdminConflictListResponse),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []))
+)]
 pub async fn admin_recent_conflicts(
     State(state): State<Arc<AppState>>,
     _admin: AdminApiKey,

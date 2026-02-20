@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Stable user identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
+#[schema(value_type = String, example = "550e8400-e29b-41d4-a716-446655440000")]
 pub struct UserId(pub Uuid);
 
 impl Display for UserId {
@@ -29,8 +30,9 @@ impl From<UserId> for Uuid {
 }
 
 /// Stable device identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
+#[schema(value_type = String, example = "f47ac10b-58cc-4372-a567-0e02b2c3d479")]
 pub struct DeviceId(pub Uuid);
 
 impl Display for DeviceId {
@@ -52,8 +54,9 @@ impl From<DeviceId> for Uuid {
 }
 
 /// Stable pack identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
+#[schema(value_type = String, example = "translation.en")]
 pub struct PackId(pub String);
 
 impl Display for PackId {
@@ -81,8 +84,9 @@ impl From<PackId> for String {
 }
 
 /// Stable goal identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
+#[schema(value_type = String, example = "daily_goals")]
 pub struct GoalId(pub String);
 
 impl Display for GoalId {
@@ -104,8 +108,9 @@ impl From<GoalId> for String {
 }
 
 /// JWT subject claim value.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
+#[schema(value_type = String, example = "google-oauth-subject")]
 pub struct JwtSubject(pub String);
 
 impl Display for JwtSubject {
@@ -155,8 +160,9 @@ impl From<JwtSubject> for String {
 }
 
 /// Millisecond unix timestamp.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
+#[schema(value_type = i64, example = 1706000000000_i64)]
 pub struct TimestampMs(pub i64);
 
 impl Display for TimestampMs {

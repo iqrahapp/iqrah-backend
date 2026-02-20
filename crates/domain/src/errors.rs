@@ -5,13 +5,15 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// API error response format
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ApiError {
+    #[schema(example = "Validation error: field is required")]
     pub error: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "[\"name: validation failed\"]")]
     pub details: Option<Vec<String>>,
 }
 
@@ -116,11 +118,11 @@ impl IntoResponse for DomainError {
         }
 
         let body = match &self {
-            DomainError::ValidationErrors(details) => ErrorResponse {
+            DomainError::ValidationErrors(details) => ApiError {
                 error: "Validation failed".to_string(),
                 details: Some(details.clone()),
             },
-            _ => ErrorResponse {
+            _ => ApiError {
                 error: self.to_string(),
                 details: None,
             },
