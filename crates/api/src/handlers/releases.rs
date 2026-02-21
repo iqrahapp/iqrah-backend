@@ -177,6 +177,13 @@ mod tests {
             async fn publish_release(
                 &self,
                 release_id: ReleaseId,
+                actor: String,
+            ) -> Result<DatasetRelease, StorageError>;
+
+            async fn deprecate_release(
+                &self,
+                release_id: ReleaseId,
+                actor: String,
             ) -> Result<DatasetRelease, StorageError>;
 
             async fn get_latest_release(&self) -> Result<Option<DatasetRelease>, StorageError>;
@@ -249,6 +256,7 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release()
             .times(1)
             .returning(move || Ok(Some(sample_release(release_id))));
@@ -281,6 +289,7 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release()
             .times(1)
             .returning(|| Err(StorageError::Unexpected("db down".to_string())));
@@ -302,6 +311,7 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest()
             .times(1)
@@ -327,6 +337,7 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest()
             .times(1)

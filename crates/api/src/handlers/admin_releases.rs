@@ -68,6 +68,13 @@ pub struct PublishReleaseResponse {
     pub release: DatasetRelease,
 }
 
+/// Deprecate response for a release.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct DeprecateReleaseResponse {
+    pub deprecated: bool,
+    pub release: DatasetRelease,
+}
+
 /// Creates a draft release.
 #[utoipa::path(
     post,
@@ -198,17 +205,53 @@ pub async fn validate_release(
 )]
 pub async fn publish_release(
     State(state): State<Arc<AppState>>,
-    _admin: AdminApiKey,
+    admin: AdminApiKey,
     Path(release_id): Path<Uuid>,
 ) -> Result<Json<PublishReleaseResponse>, DomainError> {
     let release = state
         .release_repo
-        .publish_release(ReleaseId(release_id))
+        .publish_release(ReleaseId(release_id), admin.actor)
         .await
         .map_err(map_release_repo_error)?;
 
     Ok(Json(PublishReleaseResponse {
         published: true,
+        release,
+    }))
+}
+
+/// Deprecates a published release.
+#[utoipa::path(
+    post,
+    path = "/v1/admin/releases/{id}/deprecate",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "Release ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Release deprecated", body = DeprecateReleaseResponse),
+        (status = 400, description = "Invalid input", body = ApiError),
+        (status = 401, description = "Missing admin key", body = ApiError),
+        (status = 403, description = "Invalid/disabled admin key", body = ApiError),
+        (status = 404, description = "Release not found", body = ApiError),
+        (status = 409, description = "Release cannot be deprecated from current status", body = ApiError),
+        (status = 500, description = "Internal error", body = ApiError)
+    ),
+    security(("admin_api_key" = []), ("bearer_auth" = []))
+)]
+pub async fn deprecate_release(
+    State(state): State<Arc<AppState>>,
+    admin: AdminApiKey,
+    Path(release_id): Path<Uuid>,
+) -> Result<Json<DeprecateReleaseResponse>, DomainError> {
+    let release = state
+        .release_repo
+        .deprecate_release(ReleaseId(release_id), admin.actor)
+        .await
+        .map_err(map_release_repo_error)?;
+
+    Ok(Json(DeprecateReleaseResponse {
+        deprecated: true,
         release,
     }))
 }
@@ -231,6 +274,12 @@ fn map_release_repo_error(error: StorageError) -> DomainError {
             DomainError::Conflict(format!(
                 "Release cannot be published from status '{}'",
                 message.trim_start_matches("release_not_publishable:")
+            ))
+        }
+        StorageError::Unexpected(message) if message.starts_with("release_not_deprecatable:") => {
+            DomainError::Conflict(format!(
+                "Release cannot be deprecated from status '{}'",
+                message.trim_start_matches("release_not_deprecatable:")
             ))
         }
         other => DomainError::Database(other.to_string()),
@@ -289,6 +338,13 @@ mod tests {
             async fn publish_release(
                 &self,
                 release_id: ReleaseId,
+                actor: String,
+            ) -> Result<DatasetRelease, StorageError>;
+
+            async fn deprecate_release(
+                &self,
+                release_id: ReleaseId,
+                actor: String,
             ) -> Result<DatasetRelease, StorageError>;
 
             async fn get_latest_release(&self) -> Result<Option<DatasetRelease>, StorageError>;
@@ -326,6 +382,12 @@ mod tests {
         )
     }
 
+    fn admin_auth() -> AdminApiKey {
+        AdminApiKey {
+            actor: "test-admin".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn create_release_happy_path_returns_created() {
         let mut repo = MockReleaseRepo::new();
@@ -340,13 +402,14 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let (status, Json(response)) = create_release(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             Json(CreateReleaseRequest {
                 version: "2026.02.20.1".to_string(),
                 notes: Some("notes".to_string()),
@@ -367,13 +430,14 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let err = create_release(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             Json(CreateReleaseRequest {
                 version: "".to_string(),
                 notes: None,
@@ -395,13 +459,14 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let err = create_release(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             Json(CreateReleaseRequest {
                 version: "2026.02.20.1".to_string(),
                 notes: None,
@@ -421,6 +486,7 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
@@ -470,13 +536,14 @@ mod tests {
             });
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let (status, Json(response)) = attach_release_artifact(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             axum::extract::Path(release_id.0),
             Json(AttachReleaseArtifactRequest {
                 package_id: "translation.en".to_string(),
@@ -498,13 +565,14 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let err = attach_release_artifact(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             axum::extract::Path(Uuid::new_v4()),
             Json(AttachReleaseArtifactRequest {
                 package_id: "".to_string(),
@@ -527,13 +595,14 @@ mod tests {
             .returning(|_, _, _, _| Err(StorageError::Unexpected("db down".to_string())));
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let err = attach_release_artifact(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             axum::extract::Path(Uuid::new_v4()),
             Json(AttachReleaseArtifactRequest {
                 package_id: "translation.en".to_string(),
@@ -554,6 +623,7 @@ mod tests {
         repo.expect_attach_artifact().times(0);
         repo.expect_validate_release().times(0);
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
@@ -593,13 +663,14 @@ mod tests {
             })
         });
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let Json(response) = validate_release(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             axum::extract::Path(Uuid::new_v4()),
         )
         .await
@@ -617,13 +688,14 @@ mod tests {
             .times(1)
             .returning(|_| Err(StorageError::Unexpected("db down".to_string())));
         repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let err = validate_release(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             axum::extract::Path(Uuid::new_v4()),
         )
         .await
@@ -695,15 +767,21 @@ mod tests {
         repo.expect_validate_release().times(0);
         repo.expect_publish_release()
             .times(1)
-            .returning(|_| Ok(make_release()));
+            .with(
+                mockall::predicate::eq(ReleaseId(Uuid::nil())),
+                mockall::predicate::eq("test-admin".to_string()),
+            )
+            .returning(|_, _| Ok(make_release()));
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
+        let release_id = Uuid::nil();
         let state = build_admin_state(repo);
         let Json(response) = publish_release(
             axum::extract::State(state),
-            AdminApiKey,
-            axum::extract::Path(Uuid::new_v4()),
+            admin_auth(),
+            axum::extract::Path(release_id),
         )
         .await
         .expect("publish should succeed");
@@ -719,14 +797,15 @@ mod tests {
         repo.expect_validate_release().times(0);
         repo.expect_publish_release()
             .times(1)
-            .returning(|_| Err(StorageError::Unexpected("db down".to_string())));
+            .returning(|_, _| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_deprecate_release().times(0);
         repo.expect_get_latest_release().times(0);
         repo.expect_get_release_manifest().times(0);
 
         let state = build_admin_state(repo);
         let err = publish_release(
             axum::extract::State(state),
-            AdminApiKey,
+            admin_auth(),
             axum::extract::Path(Uuid::new_v4()),
         )
         .await
@@ -781,6 +860,116 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri(format!("/v1/admin/releases/{}/publish", Uuid::new_v4()))
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn deprecate_release_happy_path_returns_deprecated_true() {
+        let mut repo = MockReleaseRepo::new();
+        repo.expect_create_draft_release().times(0);
+        repo.expect_attach_artifact().times(0);
+        repo.expect_validate_release().times(0);
+        repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release()
+            .times(1)
+            .with(
+                mockall::predicate::eq(ReleaseId(Uuid::nil())),
+                mockall::predicate::eq("test-admin".to_string()),
+            )
+            .returning(|_, _| Ok(make_release()));
+        repo.expect_get_latest_release().times(0);
+        repo.expect_get_release_manifest().times(0);
+
+        let release_id = Uuid::nil();
+        let state = build_admin_state(repo);
+        let Json(response) = deprecate_release(
+            axum::extract::State(state),
+            admin_auth(),
+            axum::extract::Path(release_id),
+        )
+        .await
+        .expect("deprecate should succeed");
+
+        assert!(response.deprecated);
+    }
+
+    #[tokio::test]
+    async fn deprecate_release_repo_fail_returns_500() {
+        let mut repo = MockReleaseRepo::new();
+        repo.expect_create_draft_release().times(0);
+        repo.expect_attach_artifact().times(0);
+        repo.expect_validate_release().times(0);
+        repo.expect_publish_release().times(0);
+        repo.expect_deprecate_release()
+            .times(1)
+            .returning(|_, _| Err(StorageError::Unexpected("db down".to_string())));
+        repo.expect_get_latest_release().times(0);
+        repo.expect_get_release_manifest().times(0);
+
+        let state = build_admin_state(repo);
+        let err = deprecate_release(
+            axum::extract::State(state),
+            admin_auth(),
+            axum::extract::Path(Uuid::new_v4()),
+        )
+        .await
+        .expect_err("repo error should fail");
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn deprecate_release_route_validation_fail_returns_400() {
+        let app = build_router(build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmpdir").path(),
+            )),
+            base_config(),
+        ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/releases/not-a-uuid/deprecate")
+                    .header("x-admin-key", "admin-secret")
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should run");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn deprecate_release_route_auth_fail_returns_401() {
+        let app = build_router(build_state(
+            Arc::new(NoopPackRepository),
+            Arc::new(NoopAuthRepository),
+            Arc::new(NoopSyncRepository),
+            Arc::new(MockJwtVerifier::new()),
+            Arc::new(FsPackAssetStore::new(
+                tempfile::tempdir().expect("tmpdir").path(),
+            )),
+            base_config(),
+        ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/admin/releases/{}/deprecate", Uuid::new_v4()))
                     .body(Body::empty())
                     .expect("request should build"),
             )

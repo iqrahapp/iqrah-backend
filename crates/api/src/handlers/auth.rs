@@ -146,9 +146,9 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::IntoResponse;
     use chrono::Utc;
-    use jsonwebtoken::{DecodingKey, Validation, decode};
     use iqrah_backend_domain::UserId;
     use iqrah_backend_storage::{AuthRepository, StorageError, UserRecord};
+    use jsonwebtoken::{DecodingKey, Validation, decode};
     use tower::ServiceExt;
     use uuid::Uuid;
 

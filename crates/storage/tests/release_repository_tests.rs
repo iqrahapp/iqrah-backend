@@ -85,7 +85,7 @@ async fn release_repository_full_publish_workflow(pool: PgPool) -> Result<(), sq
     assert!(validation.failures.is_empty());
 
     let published = release_repo
-        .publish_release(release.id)
+        .publish_release(release.id, "admin@iqrah")
         .await
         .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
     assert_eq!(published.status, DatasetReleaseStatus::Published);
@@ -210,7 +210,7 @@ async fn publish_fails_for_invalid_release(pool: PgPool) -> Result<(), sqlx::Err
         .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
     let err = release_repo
-        .publish_release(release.id)
+        .publish_release(release.id, "admin@iqrah")
         .await
         .expect_err("publish should fail when release has no artifacts");
 
@@ -223,6 +223,131 @@ async fn publish_fails_for_invalid_release(pool: PgPool) -> Result<(), sqlx::Err
             .map_err(|e| sqlx::Error::Protocol(e.to_string()))?
             .is_none()
     );
+
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn release_deprecate_excludes_release_from_latest(pool: PgPool) -> Result<(), sqlx::Error> {
+    let pack_repo = PgPackRepository::new(pool.clone());
+    let release_repo = PgReleaseRepository::new(pool);
+
+    seed_published_pack(&pack_repo, "core-content-pack", "1.1.0").await?;
+    seed_published_pack(&pack_repo, "knowledge-graph-pack", "2.2.0").await?;
+
+    let release = release_repo
+        .create_draft_release("2026.02.20.4", None, "admin@iqrah")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    release_repo
+        .attach_artifact(
+            release.id,
+            "core-content-pack",
+            ArtifactRole::CoreContentDb,
+            true,
+        )
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    release_repo
+        .attach_artifact(
+            release.id,
+            "knowledge-graph-pack",
+            ArtifactRole::KnowledgeGraph,
+            true,
+        )
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    release_repo
+        .publish_release(release.id, "ops@iqrah")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert!(
+        release_repo
+            .get_latest_release()
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?
+            .is_some()
+    );
+
+    let deprecated = release_repo
+        .deprecate_release(release.id, "ops@iqrah")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    assert_eq!(deprecated.status, DatasetReleaseStatus::Deprecated);
+
+    assert!(
+        release_repo
+            .get_latest_release()
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?
+            .is_none()
+    );
+
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn release_publish_and_deprecate_write_admin_audit_logs(
+    pool: PgPool,
+) -> Result<(), sqlx::Error> {
+    let pack_repo = PgPackRepository::new(pool.clone());
+    let release_repo = PgReleaseRepository::new(pool.clone());
+
+    seed_published_pack(&pack_repo, "core-content-pack", "1.2.0").await?;
+    seed_published_pack(&pack_repo, "knowledge-graph-pack", "2.3.0").await?;
+
+    let release = release_repo
+        .create_draft_release("2026.02.20.5", None, "admin@iqrah")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    release_repo
+        .attach_artifact(
+            release.id,
+            "core-content-pack",
+            ArtifactRole::CoreContentDb,
+            true,
+        )
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    release_repo
+        .attach_artifact(
+            release.id,
+            "knowledge-graph-pack",
+            ArtifactRole::KnowledgeGraph,
+            true,
+        )
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    release_repo
+        .publish_release(release.id, "oauth:alice")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+    release_repo
+        .deprecate_release(release.id, "oauth:bob")
+        .await
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT action, actor
+        FROM release_admin_audit_logs
+        WHERE release_id = $1
+        ORDER BY id
+        "#,
+        release.id.0
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].action, "publish");
+    assert_eq!(rows[0].actor, "oauth:alice");
+    assert_eq!(rows[1].action, "deprecate");
+    assert_eq!(rows[1].actor, "oauth:bob");
 
     Ok(())
 }

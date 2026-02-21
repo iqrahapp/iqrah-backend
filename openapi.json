@@ -653,6 +653,106 @@
         ]
       }
     },
+    "/v1/admin/releases/{id}/deprecate": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Deprecates a published release.",
+        "operationId": "deprecate_release",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Release ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Release deprecated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeprecateReleaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid/disabled admin key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Release cannot be deprecated from current status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "admin_api_key": []
+          },
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/admin/releases/{id}/publish": {
       "post": {
         "tags": [
@@ -2062,6 +2162,22 @@
           "deprecated"
         ],
         "example": "draft"
+      },
+      "DeprecateReleaseResponse": {
+        "type": "object",
+        "description": "Deprecate response for a release.",
+        "required": [
+          "deprecated",
+          "release"
+        ],
+        "properties": {
+          "deprecated": {
+            "type": "boolean"
+          },
+          "release": {
+            "$ref": "#/components/schemas/DatasetRelease"
+          }
+        }
       },
       "DeviceId": {
         "type": "string",

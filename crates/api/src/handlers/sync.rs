@@ -590,7 +590,9 @@ mod tests {
 
         let response = admin_recent_conflicts(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path(user_id),
             axum::extract::Query(ConflictQuery { limit: Some(9999) }),
         )
@@ -623,7 +625,9 @@ mod tests {
 
         let err = admin_recent_conflicts(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path(Uuid::new_v4()),
             axum::extract::Query(ConflictQuery { limit: None }),
         )
@@ -681,7 +685,9 @@ mod tests {
 
         let Json(response) = admin_user_sync_status(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path(user_id.0),
         )
         .await
@@ -721,7 +727,9 @@ mod tests {
 
         let err = admin_user_sync_status(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path(user_id.0),
         )
         .await
@@ -758,7 +766,9 @@ mod tests {
 
         let err = admin_user_sync_status(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path(user_id.0),
         )
         .await

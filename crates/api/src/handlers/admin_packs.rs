@@ -537,7 +537,9 @@ mod tests {
 
         let (status, Json(body)) = register_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             Json(RegisterPackRequest {
                 name: "English Pack".to_string(),
                 description: "desc".to_string(),
@@ -579,7 +581,9 @@ mod tests {
 
         let err = register_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             Json(RegisterPackRequest {
                 name: "English Pack".to_string(),
                 description: "desc".to_string(),
@@ -618,7 +622,9 @@ mod tests {
 
         let Json(response) = publish_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path("pack-1".to_string()),
         )
         .await
@@ -656,7 +662,9 @@ mod tests {
 
         let Json(response) = disable_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path("pack-1".to_string()),
         )
         .await
@@ -691,7 +699,9 @@ mod tests {
 
         let err = disable_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path("  ".to_string()),
         )
         .await
@@ -726,7 +736,9 @@ mod tests {
 
         let err = disable_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path("missing".to_string()),
         )
         .await
@@ -763,7 +775,9 @@ mod tests {
 
         let err = disable_pack(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
             axum::extract::Path("pack-1".to_string()),
         )
         .await
@@ -812,7 +826,9 @@ mod tests {
 
         let Json(response) = list_all_packs(
             axum::extract::State(state),
-            crate::middleware::auth::AdminApiKey,
+            crate::middleware::auth::AdminApiKey {
+                actor: "test-admin".to_string(),
+            },
         )
         .await
         .expect("list should succeed");

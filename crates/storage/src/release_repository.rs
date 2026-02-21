@@ -93,7 +93,17 @@ pub trait ReleaseRepository: Send + Sync {
         release_id: ReleaseId,
     ) -> Result<ReleaseValidationReport, StorageError>;
 
-    async fn publish_release(&self, release_id: ReleaseId) -> Result<DatasetRelease, StorageError>;
+    async fn publish_release(
+        &self,
+        release_id: ReleaseId,
+        actor: String,
+    ) -> Result<DatasetRelease, StorageError>;
+
+    async fn deprecate_release(
+        &self,
+        release_id: ReleaseId,
+        actor: String,
+    ) -> Result<DatasetRelease, StorageError>;
 
     async fn get_latest_release(&self) -> Result<Option<DatasetRelease>, StorageError>;
 
@@ -156,8 +166,17 @@ impl PgReleaseRepository {
     pub async fn publish_release(
         &self,
         release_id: ReleaseId,
+        actor: &str,
     ) -> Result<DatasetRelease, StorageError> {
-        <Self as ReleaseRepository>::publish_release(self, release_id).await
+        <Self as ReleaseRepository>::publish_release(self, release_id, actor.to_string()).await
+    }
+
+    pub async fn deprecate_release(
+        &self,
+        release_id: ReleaseId,
+        actor: &str,
+    ) -> Result<DatasetRelease, StorageError> {
+        <Self as ReleaseRepository>::deprecate_release(self, release_id, actor.to_string()).await
     }
 
     pub async fn get_latest_release(&self) -> Result<Option<DatasetRelease>, StorageError> {
@@ -307,7 +326,11 @@ impl ReleaseRepository for PgReleaseRepository {
         Ok(build_validation_report(rows)?)
     }
 
-    async fn publish_release(&self, release_id: ReleaseId) -> Result<DatasetRelease, StorageError> {
+    async fn publish_release(
+        &self,
+        release_id: ReleaseId,
+        actor: String,
+    ) -> Result<DatasetRelease, StorageError> {
         let mut tx = self.pool.begin().await.map_err(StorageError::Query)?;
 
         let release_exists = sqlx::query_scalar!(
@@ -397,6 +420,88 @@ impl ReleaseRepository for PgReleaseRepository {
                 "release_not_publishable:{status}"
             )));
         };
+
+        log_admin_release_action_tx(
+            &mut tx,
+            release_id,
+            "publish",
+            &actor,
+            serde_json::json!({
+                "release_status": row.status,
+            }),
+        )
+        .await?;
+
+        tx.commit().await.map_err(StorageError::Query)?;
+        Self::map_release_row(row)
+    }
+
+    async fn deprecate_release(
+        &self,
+        release_id: ReleaseId,
+        actor: String,
+    ) -> Result<DatasetRelease, StorageError> {
+        let mut tx = self.pool.begin().await.map_err(StorageError::Query)?;
+
+        let release_exists = sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT 1 FROM dataset_releases WHERE id = $1) AS "exists!""#,
+            release_id.0
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(StorageError::Query)?;
+
+        if !release_exists {
+            tx.rollback().await.map_err(StorageError::Query)?;
+            return Err(StorageError::Unexpected(format!(
+                "release_not_found:{}",
+                release_id
+            )));
+        }
+
+        let row = sqlx::query_as!(
+            ReleaseRow,
+            r#"
+            UPDATE dataset_releases
+            SET status = 'deprecated'
+            WHERE id = $1
+              AND status = 'published'
+            RETURNING id, version, status, notes, created_by, created_at, published_at
+            "#,
+            release_id.0
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(StorageError::Query)?;
+
+        let row = if let Some(row) = row {
+            row
+        } else {
+            let status = sqlx::query_scalar!(
+                "SELECT status FROM dataset_releases WHERE id = $1",
+                release_id.0
+            )
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(StorageError::Query)?;
+
+            tx.rollback().await.map_err(StorageError::Query)?;
+            let status = status.unwrap_or_else(|| "missing".to_string());
+            return Err(StorageError::Unexpected(format!(
+                "release_not_deprecatable:{status}"
+            )));
+        };
+
+        log_admin_release_action_tx(
+            &mut tx,
+            release_id,
+            "deprecate",
+            &actor,
+            serde_json::json!({
+                "release_status": row.status,
+            }),
+        )
+        .await?;
 
         tx.commit().await.map_err(StorageError::Query)?;
         Self::map_release_row(row)
@@ -517,6 +622,30 @@ impl ReleaseRepository for PgReleaseRepository {
             artifacts: mapped,
         }))
     }
+}
+
+async fn log_admin_release_action_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    release_id: ReleaseId,
+    action: &str,
+    actor: &str,
+    metadata: serde_json::Value,
+) -> Result<(), StorageError> {
+    sqlx::query!(
+        r#"
+        INSERT INTO release_admin_audit_logs (release_id, action, actor, metadata)
+        VALUES ($1, $2, $3, $4)
+        "#,
+        release_id.0,
+        action,
+        actor,
+        metadata
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(StorageError::Query)?;
+
+    Ok(())
 }
 
 fn parse_release_status(value: &str) -> Result<DatasetReleaseStatus, StorageError> {
@@ -646,7 +775,11 @@ mod tests {
             Err(StorageError::Query(_))
         ));
         assert!(matches!(
-            repo.publish_release(release_id).await,
+            repo.publish_release(release_id, "admin@iqrah").await,
+            Err(StorageError::Query(_))
+        ));
+        assert!(matches!(
+            repo.deprecate_release(release_id, "admin@iqrah").await,
             Err(StorageError::Query(_))
         ));
         assert!(matches!(

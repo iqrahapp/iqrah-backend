@@ -399,9 +399,20 @@ pub(crate) mod test_support {
         async fn publish_release(
             &self,
             _release_id: iqrah_backend_domain::ReleaseId,
+            _actor: String,
         ) -> Result<iqrah_backend_domain::DatasetRelease, StorageError> {
             Err(StorageError::Unexpected(
                 "NoopReleaseRepository::publish_release".to_string(),
+            ))
+        }
+
+        async fn deprecate_release(
+            &self,
+            _release_id: iqrah_backend_domain::ReleaseId,
+            _actor: String,
+        ) -> Result<iqrah_backend_domain::DatasetRelease, StorageError> {
+            Err(StorageError::Unexpected(
+                "NoopReleaseRepository::deprecate_release".to_string(),
             ))
         }
 

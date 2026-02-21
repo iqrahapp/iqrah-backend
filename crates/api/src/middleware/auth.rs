@@ -66,7 +66,9 @@ impl FromRequestParts<Arc<AppState>> for AuthUser {
 
 /// Extractor that enforces admin key for observability endpoints.
 #[derive(Debug)]
-pub struct AdminApiKey;
+pub struct AdminApiKey {
+    pub actor: String,
+}
 
 impl FromRequestParts<Arc<AppState>> for AdminApiKey {
     type Rejection = DomainError;
@@ -92,7 +94,16 @@ impl FromRequestParts<Arc<AppState>> for AdminApiKey {
                 return Err(DomainError::Forbidden("Invalid admin key".to_string()));
             }
 
-            return Ok(Self);
+            let actor = parts
+                .headers
+                .get("x-admin-actor")
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("admin_api_key")
+                .to_string();
+
+            return Ok(Self { actor });
         }
 
         let allowlist = &state.config.admin_oauth_sub_allowlist;
@@ -122,7 +133,9 @@ impl FromRequestParts<Arc<AppState>> for AdminApiKey {
             ));
         }
 
-        Ok(Self)
+        Ok(Self {
+            actor: format!("oauth:{oauth_sub}"),
+        })
     }
 }
 
@@ -248,9 +261,27 @@ mod tests {
             .expect("request should build")
             .into_parts();
 
-        AdminApiKey::from_request_parts(&mut parts, &state)
+        let admin = AdminApiKey::from_request_parts(&mut parts, &state)
             .await
             .expect("admin key should pass");
+        assert_eq!(admin.actor, "admin_api_key");
+    }
+
+    #[tokio::test]
+    async fn admin_api_key_extractor_accepts_custom_actor_header() {
+        let state = build_default_state();
+        let (mut parts, _) = Request::builder()
+            .uri("/v1/admin/packs")
+            .header("x-admin-key", "admin-secret")
+            .header("x-admin-actor", "release-bot")
+            .body(Body::empty())
+            .expect("request should build")
+            .into_parts();
+
+        let admin = AdminApiKey::from_request_parts(&mut parts, &state)
+            .await
+            .expect("admin key should pass");
+        assert_eq!(admin.actor, "release-bot");
     }
 
     #[tokio::test]
@@ -330,9 +361,10 @@ mod tests {
             .expect("request should build")
             .into_parts();
 
-        AdminApiKey::from_request_parts(&mut parts, &state)
+        let admin = AdminApiKey::from_request_parts(&mut parts, &state)
             .await
             .expect("allowlisted admin token should pass");
+        assert_eq!(admin.actor, "oauth:oauth-admin");
     }
 
     #[tokio::test]

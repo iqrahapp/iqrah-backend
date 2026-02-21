@@ -12,7 +12,7 @@ use crate::handlers::admin_packs::{
     add_version, disable_pack, list_all_packs, publish_pack, register_pack, upload_pack,
 };
 use crate::handlers::admin_releases::{
-    attach_release_artifact, create_release, publish_release, validate_release,
+    attach_release_artifact, create_release, deprecate_release, publish_release, validate_release,
 };
 use crate::handlers::sync::{admin_recent_conflicts, admin_user_sync_status};
 
@@ -32,6 +32,7 @@ pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         )
         .route("/v1/admin/releases/{id}/validate", post(validate_release))
         .route("/v1/admin/releases/{id}/publish", post(publish_release))
+        .route("/v1/admin/releases/{id}/deprecate", post(deprecate_release))
         .route(
             "/v1/admin/sync/conflicts/{user_id}",
             get(admin_recent_conflicts),

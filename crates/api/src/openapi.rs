@@ -34,6 +34,7 @@ use utoipa::{
         crate::handlers::admin_releases::attach_release_artifact,
         crate::handlers::admin_releases::validate_release,
         crate::handlers::admin_releases::publish_release,
+        crate::handlers::admin_releases::deprecate_release,
         crate::handlers::releases::get_latest_release,
         crate::handlers::releases::get_release_manifest
     ),
@@ -99,7 +100,8 @@ use utoipa::{
             crate::handlers::admin_releases::AttachReleaseArtifactRequest,
             crate::handlers::admin_releases::AttachReleaseArtifactResponse,
             crate::handlers::admin_releases::ValidateReleaseResponse,
-            crate::handlers::admin_releases::PublishReleaseResponse
+            crate::handlers::admin_releases::PublishReleaseResponse,
+            crate::handlers::admin_releases::DeprecateReleaseResponse
         )
     ),
     modifiers(&SecuritySchemes),
